@@ -1,0 +1,3 @@
+[submodule "QCL"]
+	path = QCL
+	url = git://github.com/illuhad/QuickCL.git
