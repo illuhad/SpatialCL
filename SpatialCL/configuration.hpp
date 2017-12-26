@@ -29,9 +29,9 @@
 #ifndef CONFIGURATION_HPP
 #define CONFIGURATION_HPP
 
-#define WITH_BOOST_COMPUTE_COMPAT
 #include <QCL/qcl.hpp>
 #include <QCL/qcl_module.hpp>
+#include <QCL/qcl_boost_compat.hpp>
 
 #include "types.hpp"
 
@@ -71,6 +71,7 @@ struct configuration
 {
   using scalar = typename Type_descriptor::scalar;
   using cell_index_type = typename cl_vector_type<unsigned, Type_descriptor::dimension>::value;
+  using int_vector_type = typename cl_vector_type<int, Type_descriptor::dimension>::value;
   using vector_type   = typename cl_vector_type<scalar, Type_descriptor::dimension>::value;
   using particle_type = typename cl_vector_type<scalar, Type_descriptor::particle_dimension>::value;
   static constexpr std::size_t dimension = Type_descriptor::dimension;
@@ -82,6 +83,7 @@ struct configuration
   QCL_MAKE_SOURCE(
     QCL_IMPORT_TYPE(cell_index_type)
     QCL_IMPORT_TYPE(vector_type)
+    QCL_IMPORT_TYPE(int_vector_type)
     QCL_IMPORT_TYPE(particle_type)
     QCL_IMPORT_TYPE(scalar)
     QCL_IMPORT_CONSTANT(dimension)
@@ -89,9 +91,11 @@ struct configuration
      #if dimension == 2
       #define PARTICLE_POSITION(p) p.xy
       #define CONVERT_VECTOR_TO_CELL_INDEX(v) convert_uint2(v)
+      #define VECTOR_NORM2(v) dot(v,v)
      #elif dimension == 3
       #define PARTICLE_POSITION(p) p.xyzw
       #define CONVERT_VECTOR_TO_CELL_INDEX(v) convert_uint4(v)
+      #define VECTOR_NORM2(v) dot(v.xyz, v.xyz)
      #else
       #error Invalid dimension, only 2d and 3d is supported.
      #endif

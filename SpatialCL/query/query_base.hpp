@@ -26,41 +26,22 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-
-#ifndef CL_UTILS_HPP
-#define CL_UTILS_HPP
+#ifndef QUERY_BASE_HPP
+#define QUERY_BASE_HPP
 
 #include <QCL/qcl.hpp>
-#include <QCL/qcl_module.hpp>
-#include <QCL/qcl_boost_compat.hpp>
 
-namespace cl_utils {
+namespace spatialcl {
+namespace query {
 
-#ifdef NODEBUG
- const int CL_NODEBUG = 1;
-#else
- const int CL_NODEBUG = 0;
-#endif
+class basic_query
+{
+public:
+  virtual void push_full_arguments(qcl::kernel_call& call) = 0;
+  virtual std::size_t get_num_independent_queries() const = 0;
+};
 
-QCL_STANDALONE_MODULE(debug)
-QCL_STANDALONE_SOURCE
-(
-  QCL_IMPORT_CONSTANT(CL_NODEBUG)
-  R"(
-  #if CL_NODEBUG == 0
-    #define NAMED_ASSERT(name, cond) \
-      if(!(cond)) \
-        printf("Assert failed: %s, Line %d", name, __LINE__);
-    #define ASSERT(cond) \
-      if(!(cond)) \
-        printf("Assert failed: %s, Line %d\n", __FILE__, __LINE__);
-  #else
-    #define ASSERT(cond)
-    #define NAMED_ASSERT(name, cond)
-  #endif
-  )"
-)
-
+}
 }
 
 #endif

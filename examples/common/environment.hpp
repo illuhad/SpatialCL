@@ -1,3 +1,4 @@
+
 /*
  * This file is part of SpatialCL, a library for the spatial processing of
  * particles.
@@ -26,40 +27,44 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-
-#ifndef CL_UTILS_HPP
-#define CL_UTILS_HPP
+#ifndef COMMON_ENVIRONMENT_HPP
+#define COMMON_ENVIRONMENT_HPP
 
 #include <QCL/qcl.hpp>
-#include <QCL/qcl_module.hpp>
-#include <QCL/qcl_boost_compat.hpp>
+#include <iostream>
 
-namespace cl_utils {
+namespace common {
 
-#ifdef NODEBUG
- const int CL_NODEBUG = 1;
-#else
- const int CL_NODEBUG = 0;
-#endif
+class environment
+{
+public:
+  environment()
+  {
+    const cl::Platform& platform = _env.get_platform_by_preference({"NVIDIA",
+                                                                   "AMD",
+                                                                   "Intel"});
+    qcl::global_context_ptr global_ctx = _env.create_global_context(platform,
+                                                                    CL_DEVICE_TYPE_GPU);
+    _ctx = global_ctx->device();
 
-QCL_STANDALONE_MODULE(debug)
-QCL_STANDALONE_SOURCE
-(
-  QCL_IMPORT_CONSTANT(CL_NODEBUG)
-  R"(
-  #if CL_NODEBUG == 0
-    #define NAMED_ASSERT(name, cond) \
-      if(!(cond)) \
-        printf("Assert failed: %s, Line %d", name, __LINE__);
-    #define ASSERT(cond) \
-      if(!(cond)) \
-        printf("Assert failed: %s, Line %d\n", __FILE__, __LINE__);
-  #else
-    #define ASSERT(cond)
-    #define NAMED_ASSERT(name, cond)
-  #endif
-  )"
-)
+    std::cout << "Using OpenCL device:\n";
+    std::cout << "  Vendor:      " << _ctx->get_device_vendor() << std::endl;
+    std::cout << "  Device name: " << _ctx->get_device_name() << std::endl;
+    std::cout << "via Platform:\n";
+    std::cout << "  Vendor: " << _env.get_platform_vendor(platform) << std::endl;
+    std::cout << "  Name:   " << _env.get_platform_name(platform) << std::endl;
+
+  }
+
+  const qcl::device_context_ptr& get_device_context() const
+  {
+    return _ctx;
+  }
+
+private:
+  qcl::environment _env;
+  qcl::device_context_ptr _ctx;
+};
 
 }
 

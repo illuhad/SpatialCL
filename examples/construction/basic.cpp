@@ -30,7 +30,9 @@
 #include <random>
 
 
-#include <SpatialCL/particle_bvh_sfc_tree.hpp>
+#include <SpatialCL/tree.hpp>
+#include "../common/environment.hpp"
+#include "../common/random_particles.hpp"
 
 void print_vector(const std::vector<cl_float4>& data, std::size_t begin, std::size_t size)
 {
@@ -50,35 +52,12 @@ void print_vector(const std::vector<cl_float4>& data, std::size_t begin, std::si
 
 int main(int argc, char** argv)
 {
-  qcl::environment env;
-  const cl::Platform& platform = env.get_platform_by_preference({"NVIDIA",
-                                                                 "AMD",
-                                                                 "Intel"});
-  qcl::global_context_ptr global_ctx = env.create_global_context(platform, CL_DEVICE_TYPE_GPU);
-
-  qcl::device_context_ptr ctx = global_ctx->device();
-
-  std::cout << "Using OpenCL device:\n";
-  std::cout << "  Vendor:      " << ctx->get_device_vendor() << std::endl;
-  std::cout << "  Device name: " << ctx->get_device_name() << std::endl;
-  std::cout << "via Platform:\n";
-  std::cout << "  Vendor: " << env.get_platform_vendor(platform) << std::endl;
-  std::cout << "  Name:   " << env.get_platform_name(platform) << std::endl;
+  common::environment env;
+  qcl::device_context_ptr ctx = env.get_device_context();
 
   std::vector<cl_float4> particles;
-
-  std::mt19937 generator(1245);
-  std::uniform_real_distribution<float> distribution;
-
-  for(std::size_t i = 0; i < 128; ++i)
-  {
-    cl_float4 p;
-    p.s[0] = distribution(generator);
-    p.s[1] = distribution(generator);
-    p.s[2] = distribution(generator);
-    p.s[3] = 1.0f;
-    particles.push_back(p);
-  }
+  common::random_particles<float, 3> rnd;
+  rnd(128, particles);
 
   spatialcl::hilbert_bvh_sp3d_tree<3> gpu_tree{ctx, particles};
 

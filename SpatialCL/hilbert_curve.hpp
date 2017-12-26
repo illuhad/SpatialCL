@@ -42,6 +42,8 @@ template<class Type_descriptor>
 class hilbert_curve : public position_generator<Type_descriptor>
 {
 public:
+  QCL_MAKE_MODULE(hilbert_curve)
+
   using vector_type = typename configuration<Type_descriptor>::vector_type;
 
   virtual void operator()(const qcl::device_context_ptr& ctx,
@@ -61,8 +63,6 @@ public:
   }
 
   virtual ~hilbert_curve(){}
-
-  QCL_MAKE_MODULE(hilbert_curve)
 
   static constexpr unsigned hilbert_num_cells2d = 0xffffffff;
   static constexpr unsigned hilbert_num_resolved_levels2d = 32;

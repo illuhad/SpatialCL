@@ -29,8 +29,8 @@
 #ifndef BINARY_TREE_HPP
 #define BINARY_TREE_HPP
 
-#include "configuration.hpp"
-#include "bit_manipulation.hpp"
+#include "../configuration.hpp"
+#include "../bit_manipulation.hpp"
 
 
 /**
@@ -202,6 +202,25 @@ public:
         child.local_node_id++;
 
         return child;
+      }
+
+      binary_tree_key_t binary_tree_get_parent(binary_tree_key_t* ctx)
+      {
+        binary_tree_key_t result = *ctx;
+        result.level--;
+        result.local_node_id >>= 1;
+
+        return result;
+      }
+
+      int binary_tree_is_left_child(binary_tree_key_t* ctx)
+      {
+        return (ctx->local_node_id & 1) == 0;
+      }
+
+      int binary_tree_is_right_child(binary_tree_key_t* ctx)
+      {
+        return ctx->local_node_id & 1;
       }
     )
   )

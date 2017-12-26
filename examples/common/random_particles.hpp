@@ -1,3 +1,4 @@
+
 /*
  * This file is part of SpatialCL, a library for the spatial processing of
  * particles.
@@ -26,40 +27,52 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifndef RANDOM_PARTICLES_HPP
+#define RANDOM_PARTICLES_HPP
 
-#ifndef CL_UTILS_HPP
-#define CL_UTILS_HPP
+#include <random>
+#include <SpatialCL/types.hpp>
 
-#include <QCL/qcl.hpp>
-#include <QCL/qcl_module.hpp>
-#include <QCL/qcl_boost_compat.hpp>
+namespace common {
 
-namespace cl_utils {
+template<class Scalar_type,
+         std::size_t Num_dimensions>
+class random_particles
+{
+public:
+  using vector_type = typename spatialcl::cl_vector_type
+                      <
+                         Scalar_type,
+                         Num_dimensions
+                      >::value;
+  random_particles(std::size_t seed = 1245)
+    : _generator{seed}
+  {}
 
-#ifdef NODEBUG
- const int CL_NODEBUG = 1;
-#else
- const int CL_NODEBUG = 0;
-#endif
 
-QCL_STANDALONE_MODULE(debug)
-QCL_STANDALONE_SOURCE
-(
-  QCL_IMPORT_CONSTANT(CL_NODEBUG)
-  R"(
-  #if CL_NODEBUG == 0
-    #define NAMED_ASSERT(name, cond) \
-      if(!(cond)) \
-        printf("Assert failed: %s, Line %d", name, __LINE__);
-    #define ASSERT(cond) \
-      if(!(cond)) \
-        printf("Assert failed: %s, Line %d\n", __FILE__, __LINE__);
-  #else
-    #define ASSERT(cond)
-    #define NAMED_ASSERT(name, cond)
-  #endif
-  )"
-)
+  void operator()(std::size_t num_particles,
+                  std::vector<vector_type>& out,
+                  Scalar_type min_coordinates = 0.0f,
+                  Scalar_type max_coordinates = 1.0f)
+  {
+    out.clear();
+
+    std::uniform_real_distribution<Scalar_type> distribution{
+      min_coordinates, max_coordinates
+    };
+
+    for(std::size_t i = 0; i < num_particles; ++i)
+    {
+      vector_type v = {};
+
+      for(std::size_t j = 0; j < Num_dimensions; ++j)
+        v.s[j] = distribution(_generator);
+      out.push_back(v);
+    }
+  }
+private:
+  std::mt19937 _generator;
+};
 
 }
 

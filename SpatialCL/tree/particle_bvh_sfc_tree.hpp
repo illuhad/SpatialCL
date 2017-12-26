@@ -33,10 +33,10 @@
 #include <string>
 
 #include "particle_bvh_tree.hpp"
-#include "bit_manipulation.hpp"
-#include "sfc_position_generator.hpp"
-#include "zcurve.hpp"
-#include "hilbert_curve.hpp"
+#include "../bit_manipulation.hpp"
+#include "../sfc_position_generator.hpp"
+#include "../zcurve.hpp"
+#include "../hilbert_curve.hpp"
 
 namespace spatialcl {
 
@@ -156,41 +156,6 @@ public:
                                 boost_queue);
   }
 };
-
-template<class Type_descriptor>
-using zcurve_bvh_tree =
-  particle_bvh_tree<key_based_sorter<zcurve_sort_key_generator<Type_descriptor>>, Type_descriptor>;
-
-template<std::size_t Num_particle_components>
-using zcurve_bvh_sp2d_tree = zcurve_bvh_tree<type_descriptor::single_precision2d<Num_particle_components>>;
-
-template<std::size_t Num_particle_components>
-using zcurve_bvh_sp3d_tree = zcurve_bvh_tree<type_descriptor::single_precision3d<Num_particle_components>>;
-
-template<std::size_t Num_particle_components>
-using zcurve_bvh_dp2d_tree = zcurve_bvh_tree<type_descriptor::double_precision2d<Num_particle_components>>;
-
-template<std::size_t Num_particle_components>
-using zcurve_bvh_dp3d_tree = zcurve_bvh_tree<type_descriptor::double_precision3d<Num_particle_components>>;
-
-
-template<class Type_descriptor>
-using hilbert_bvh_tree =
-  particle_bvh_tree<key_based_sorter<hilbert_sort_key_generator<Type_descriptor>>, Type_descriptor>;
-
-template<std::size_t Num_particle_components>
-using hilbert_bvh_sp2d_tree = hilbert_bvh_tree<type_descriptor::single_precision2d<Num_particle_components>>;
-
-template<std::size_t Num_particle_components>
-using hilbert_bvh_sp3d_tree = hilbert_bvh_tree<type_descriptor::single_precision3d<Num_particle_components>>;
-
-template<std::size_t Num_particle_components>
-using hilbert_bvh_dp2d_tree = hilbert_bvh_tree<type_descriptor::double_precision2d<Num_particle_components>>;
-
-template<std::size_t Num_particle_components>
-using hilbert_bvh_dp3d_tree = hilbert_bvh_tree<type_descriptor::double_precision3d<Num_particle_components>>;
-
-//using kd_bvh_tree = particle_bvh_tree<key_based_sorter<kd_sort_key_generator>>;
 
 }
 /*

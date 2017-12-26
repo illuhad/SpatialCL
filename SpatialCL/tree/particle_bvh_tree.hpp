@@ -32,9 +32,10 @@
 #include <boost/compute.hpp>
 #include <cassert>
 #include <functional>
-#include "configuration.hpp"
 #include "binary_tree.hpp"
-#include "cl_utils.hpp"
+#include "../configuration.hpp"
+#include "../cl_utils.hpp"
+
 
 namespace spatialcl {
 
@@ -45,6 +46,8 @@ public:
   using particle_type = typename configuration<Type_descriptor>::particle_type;
   using vector_type = typename configuration<Type_descriptor>::vector_type;
   using boost_particle = typename qcl::to_boost_vector_type<particle_type>::type;
+
+  using type_system = Type_descriptor;
 
   particle_bvh_tree(const qcl::device_context_ptr& ctx,
                     const std::vector<particle_type>& particles,
@@ -84,9 +87,30 @@ public:
     return this->_effective_num_particles-1;
   }
 
+  std::size_t get_effective_num_levels() const
+  {
+    return this->_num_levels;
+  }
+
   const cl::Buffer& get_sorted_particles() const
   {
     return this->_sorted_particles;
+  }
+
+  template<class Query_engine_type>
+  cl_int execute_query(Query_engine_type& engine,
+                       typename Query_engine_type::handler_type& handler,
+                       cl::Event* evt = nullptr) const
+  {
+    return engine( this->_ctx,
+                   this->_sorted_particles,
+                   this->_bb_min_corners,
+                   this->_bb_max_corners,
+                   this->_num_particles,
+                   this->_effective_num_particles,
+                   this->_num_levels,
+                   handler,
+                   evt);
   }
 
   QCL_MAKE_MODULE(particle_bvh_tree)

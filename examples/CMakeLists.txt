@@ -1,1 +1,1 @@
-subdirs(basic)
+subdirs(construction range_query)
