@@ -162,7 +162,7 @@ public:
         num_retrieved_particles[get_query_id()] = num_selected_particles;
     )
     QCL_PREPROCESSOR(define,
-      get_num_parallel_queries()
+      get_num_queries()
         num_queries
     )
 

@@ -66,14 +66,23 @@ QCL_STANDALONE_SOURCE
       return result;
     }
 
+
+    int box_contains_point(vector_type box_min,
+                           vector_type box_max,
+                           vector_type point)
+    {
+      int_vector_type contains = (box_min <= point) &&
+                                 (box_max >= point);
+      return DIMENSIONALITY_SWITCH(contains.x & contains.y & 1,
+                                   contains.x & contains.y & contains.z & 1);
+    }
+
     int box_contains_particle(vector_type box_min,
                               vector_type box_max,
                               particle_type p)
     {
-      int_vector_type contains = (box_min <= PARTICLE_POSITION(p)) &&
-                                 (box_max >= PARTICLE_POSITION(p));
-      return DIMENSIONALITY_SWITCH(contains.x & contains.y & 1,
-                                   contains.x & contains.y & contains.z & 1);
+      return box_contains_point(box_min, box_max,
+                                PARTICLE_POSITION(p));
     }
   )
 )

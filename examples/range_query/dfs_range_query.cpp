@@ -27,11 +27,11 @@
  */
 
 #include <iostream>
-#include <random>
 
 #include <SpatialCL/tree.hpp>
 #include <SpatialCL/query.hpp>
 
+#include <QCL/qcl.hpp>
 #include <QCL/qcl_array.hpp>
 
 #include "../common/environment.hpp"

@@ -237,7 +237,7 @@ public:
         {
 
           for(size_t tid = get_global_id(0);
-              tid < get_num_parallel_queries();
+              tid < get_num_queries();
               tid += get_global_size(0))
           {
             at_query_init();

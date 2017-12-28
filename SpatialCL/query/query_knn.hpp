@@ -33,92 +33,162 @@
 #include "../configuration.hpp"
 #include "../math/geometry.hpp"
 
+#include "query_base.hpp"
+
 namespace spatialcl {
 namespace query {
 
 
 template<class Type_descriptor, std::size_t K>
-QCL_STANDALONE_MODULE(knn_query)
-QCL_STANDALONE_SOURCE
-(
-  QCL_INCLUDE_MODULE(configuration<Type_descriptor>)
-  QCL_INCLUDE_MODULE(math::geometry<Type_descriptor>)
-  QCL_IMPORT_CONSTANT(K)
-  QCL_PREPROCESSOR(define,
-    dfs_node_selection_criterion(selection_result_ptr,
-                                 current_node_key_ptr,
-                                 node_index,
-                                 bbox_min_corner,
-                                 bbox_max_corner)
+class knn_query : public basic_query
+{
+public:
+  knn_query(const cl::Buffer& query_points,
+            const cl::Buffer& results,
+            std::size_t num_queries)
+    : _query_points{query_points},
+      _results{results},
+      _num_queries{num_queries}
+  {
+  }
 
-      scalar dist2 = box_distance2(query_position,
+  virtual void push_full_arguments(qcl::kernel_call& call) override
+  {
+    call.partial_argument_list(_query_points,
+                               _results,
+                               static_cast<cl_ulong>(_num_queries));
+  }
+
+  virtual std::size_t get_num_independent_queries() const override
+  {
+    return _num_queries;
+  }
+
+  virtual ~knn_query(){}
+
+  static_assert(K > 0, "K must be non-zero");
+
+private:
+  cl::Buffer _query_points;
+  cl::Buffer _results;
+  std::size_t _num_queries;
+public:
+  QCL_MAKE_MODULE(knn_query)
+  QCL_MAKE_SOURCE
+  (
+    QCL_INCLUDE_MODULE(configuration<Type_descriptor>)
+    QCL_INCLUDE_MODULE(math::geometry<Type_descriptor>)
+    QCL_IMPORT_CONSTANT(K)
+    // depth-first-serach for knn queries is currently
+    // implemented rather inefficiently, because the DFS
+    // query interface currently does not provide a means
+    // to compare sibling nodes. This is however required
+    // for efficient KNN queries to decide which path down
+    // the tree is the better one.
+    QCL_PREPROCESSOR(define,
+      dfs_node_selection_criterion(selection_result_ptr,
+                                   current_node_key_ptr,
+                                   node_index,
                                    bbox_min_corner,
-                                   bbox_max_corner);
-      *selection_result_ptr = dist2 < *current_max_distance;
-
-  )
-  QCL_PREPROCESSOR(define,
-    particle_selection_criterion(selection_result_ptr,
-                                 particle_idx,
-                                 current_particle)
-  )
-  QCL_PREPROCESSOR(define,
-    node_select_handler(node_index,
-                        bbox_min_corner,
-                        bbox_max_corner)
-  )
-  QCL_PREPROCESSOR(define,
-    particle_select_handler(particle_index,
-                            particle)
-  )
-  QCL_PREPROCESSOR(define,
-    node_discard_handler(current_node_key_ptr,
-                         node_idx,
+                                   bbox_max_corner)
+      {
+        scalar dist2 = 0.0f;
+        if(!box_contains_particle(bbox_min_corner,
+                                  bbox_max_corner,
+                                  query_position))
+           box_distance2(query_position,
                          bbox_min_corner,
-                         bbox_max_corner)
-  )
-  QCL_PREPROCESSOR(define,
-    particle_discard_handler(particle_index,
-                             particle)
-  )
-  R"(
-    #define declare_full_query_parameter_set() \
-       __global vector_type* query_positions, \
-       __global particle_type* query_result, \
-                     ulong num_queries
-  )"
-  QCL_PREPROCESSOR(define,
-    declare_resumable_query_parameter_set()
-  )
-  QCL_PREPROCESSOR(define,
-    at_query_init()
+                         bbox_max_corner);
 
-      scalar candidate_distances2 [K];
+        *selection_result_ptr =
+                       dist2 < candidate_distances2[max_distance_idx];
+      }
 
-      for(int i = 0; i < K; ++i)
-        candidate_distance2[i] = MAX_FLOAT;
+    )
+    QCL_PREPROCESSOR(define,
+      particle_selection_criterion(selection_result_ptr,
+                                   particle_idx,
+                                   current_particle)
+      {
+        vector_type delta = PARTICLE_POSITION(current_particle)
+                          - query_position;
+        scalar dist2 = VECTOR_NORM2(delta);
 
-      uint max_distance_idx = 0;
-      scalar
+        *selection_result_ptr =
+               dist2 < candidate_distances2[max_distance_idx];
 
-      vector_type query_position = query_positions[tid];
-  )
-  QCL_PREPROCESSOR(define,
-    at_query_resume()
-  )
-  QCL_PREPROCESSOR(define,
-    at_query_pause()
-  )
-  QCL_PREPROCESSOR(define,
-    at_query_exit()
-  )
-  QCL_PREPROCESSOR(define,
-    get_num_parallel_queries()
-      num_queries
+        if(*selection_result_ptr)
+        {
+          candidate_distances2[max_distance_idx] = dist2;
+          candidates[max_distance_idx] = current_particle;
+          max_distance_idx = 0;
+          for(int i = 0; i < K; ++i)
+            if(candidate_distances2[i] >
+               candidate_distances2[max_distance_idx])
+              max_distance_idx = i;
+        }
+      }
+    )
+    QCL_PREPROCESSOR(define,
+      node_select_handler(node_index,
+                          bbox_min_corner,
+                          bbox_max_corner)
+    )
+    QCL_PREPROCESSOR(define,
+      particle_select_handler(particle_index,
+                              particle)
+    )
+    QCL_PREPROCESSOR(define,
+      node_discard_handler(current_node_key_ptr,
+                           node_idx,
+                           bbox_min_corner,
+                           bbox_max_corner)
+    )
+    QCL_PREPROCESSOR(define,
+      particle_discard_handler(particle_index,
+                               particle)
+    )
+    R"(
+      #define declare_full_query_parameter_set() \
+         __global vector_type* query_positions, \
+         __global particle_type* query_result, \
+         ulong num_queries
+    )"
+    QCL_PREPROCESSOR(define,
+      declare_resumable_query_parameter_set()
+    )
+    QCL_PREPROCESSOR(define,
+      at_query_init()
+
+        scalar candidate_distances2 [K];
+        particle_type candidates    [K];
+
+        for(int i = 0; i < K; ++i)
+          candidate_distances2[i] = FLT_MAX;
+
+        uint max_distance_idx = 0;
+
+        vector_type query_position =
+            query_positions[get_query_id()];
+    )
+    QCL_PREPROCESSOR(define,
+      at_query_resume()
+    )
+    QCL_PREPROCESSOR(define,
+      at_query_pause()
+    )
+    QCL_PREPROCESSOR(define,
+      at_query_exit()
+        for(int i = 0; i < K; ++i)
+          query_result[get_query_id()*K + i] = candidates[i];
+    )
+    QCL_PREPROCESSOR(define,
+      get_num_queries()
+        num_queries
   )
 
 )
-
+};
 
 
 }

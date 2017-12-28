@@ -52,15 +52,19 @@ void print_vector(const std::vector<cl_float4>& data, std::size_t begin, std::si
 
 int main(int argc, char** argv)
 {
+  // Setup environment
   common::environment env;
   qcl::device_context_ptr ctx = env.get_device_context();
 
+  // Create random particles
   std::vector<cl_float4> particles;
   common::random_particles<float, 3> rnd;
   rnd(128, particles);
 
+  // Construct tree from particles
   spatialcl::hilbert_bvh_sp3d_tree<3> gpu_tree{ctx, particles};
 
+  // Retrieve bounding boxes of the tree
   cl::Buffer bbox_min_corners = gpu_tree.get_bbox_min_corners();
   cl::Buffer bbox_max_corners = gpu_tree.get_bbox_max_corners();
 

@@ -1,1 +1,1 @@
-subdirs(construction range_query)
+subdirs(construction range_query knn_query)
