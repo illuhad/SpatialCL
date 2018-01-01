@@ -26,6 +26,9 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifndef TREE_HPP
+#define TREE_HPP
+
 #include "tree/particle_bvh_sfc_tree.hpp"
 
 namespace spatialcl {
@@ -68,3 +71,5 @@ using hilbert_bvh_dp3d_tree = hilbert_bvh_tree<type_descriptor::double_precision
 
 
 }
+
+#endif

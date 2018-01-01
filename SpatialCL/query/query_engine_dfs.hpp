@@ -116,14 +116,24 @@ public:
           *particle_out = particles[idx];
           return idx;
         }
+
+        binary_tree_key_t find_first_left_parent(binary_tree_key_t* node)
+        {
+          binary_tree_key_t result = *node;
+          while(binary_tree_is_right_child(&result))
+            result = binary_tree_get_parent(&result);
+          return result;
+        }
       )
       R"(
       #if Iteration_strategy == 0
         // Strict iteration
-        #define PARENT(node)
+        #define NEXT_PARENT(node) find_first_left_parent(&node)
       #elif Iteration_strategy == 1
         // Relaxed iteration
-        #define PARENT(node) node = binary_tree_get_parent(&node)
+        #define NEXT_PARENT(node) binary_tree_get_parent(&node)
+      #else
+        #error Invalid iteration strategy
       #endif
       )"
       QCL_PREPROCESSOR(define, get_query_id() tid)
@@ -173,7 +183,7 @@ public:
             {
               // if we are at a right child node, go up to the parent's
               // sibling...
-              current_node = binary_tree_get_parent(&current_node);
+              current_node = NEXT_PARENT(current_node);
               current_node.local_node_id++;
             }
             else
@@ -216,7 +226,7 @@ public:
             {
               // if we are at a right child node, go up to the parent's
               // sibling...
-              current_node = binary_tree_get_parent(&current_node);
+              current_node = NEXT_PARENT(current_node);
               current_node.local_node_id++;
             }
             else
