@@ -35,7 +35,7 @@
 #include <QCL/qcl_array.hpp>
 
 #include "../common/environment.hpp"
-#include "../common/random_particles.hpp"
+#include "../common/random_vectors.hpp"
 
 const std::size_t num_particles = 128;
 const std::size_t num_queries = 128;
@@ -117,7 +117,7 @@ int main()
   qcl::device_context_ptr ctx = env.get_device_context();
 
   std::vector<cl_float4> particles;
-  common::random_particles<scalar, 3> rnd;
+  common::random_vectors<scalar, 3> rnd;
   rnd(num_particles, particles);
 
   tree_type gpu_tree{ctx, particles};

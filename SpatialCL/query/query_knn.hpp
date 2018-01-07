@@ -2,7 +2,7 @@
  * This file is part of SpatialCL, a library for the spatial processing of
  * particles.
  *
- * Copyright (c) 2017 Aksel Alpay
+ * Copyright (c) 2017, 2018 Aksel Alpay
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -79,6 +79,29 @@ public:
     QCL_INCLUDE_MODULE(configuration<Type_descriptor>)
     QCL_INCLUDE_MODULE(math::geometry<Type_descriptor>)
     QCL_IMPORT_CONSTANT(K)
+
+    QCL_RAW(
+    void knn_update_max_distance(uint* max_distance_idx,
+                                 scalar* candidate_distances2)
+    {
+      *max_distance_idx = 0;
+      // Find new max distance index
+      for(int i = 0; i < K; ++i)
+        if(candidate_distances2[i] >
+          candidate_distances2[*max_distance_idx])
+          *max_distance_idx = i;
+    }
+
+    void knn_add_candidate_particle(particle_type particle,
+                                    scalar particle_dist2,
+                                    uint* max_distance_idx,
+                                    scalar* candidate_distances2,
+                                    particle_type* candidates)
+    {
+      candidate_distances2[*max_distance_idx] = particle_dist2;
+      candidates[*max_distance_idx] = particle;
+      knn_update_max_distance(max_distance_idx, candidate_distances2);
+    })
     // depth-first-serach for knn queries is currently
     // implemented rather inefficiently, because the DFS
     // query interface currently does not provide a means
@@ -86,11 +109,11 @@ public:
     // for efficient KNN queries to decide which path down
     // the tree is the better one.
     QCL_PREPROCESSOR(define,
-      dfs_node_selection_criterion(selection_result_ptr,
-                                   current_node_key_ptr,
-                                   node_index,
-                                   bbox_min_corner,
-                                   bbox_max_corner)
+      dfs_node_selector(selection_result_ptr,
+                        current_node_key_ptr,
+                        node_index,
+                        bbox_min_corner,
+                        bbox_max_corner)
       {
         scalar dist2 = 0.0f;
         if(!box_contains_particle(bbox_min_corner,
@@ -106,9 +129,77 @@ public:
 
     )
     QCL_PREPROCESSOR(define,
-      particle_selection_criterion(selection_result_ptr,
-                                   particle_idx,
-                                   current_particle)
+      bfs_node_selector(max_selectable_nodes,
+                        num_available_nodes)
+      {
+        uint selection_candidates [K];
+        for(uint k = 0; k < K; ++k)
+        {
+          // Clear candidate distances from remaining information
+          // from previous levels
+          candidate_distances2[k] = FLT_MAX;
+          selection_candidates[k] = 0;
+        }
+
+        for(uint k = 0; k < num_available_nodes; ++k)
+        {
+          // Access k-th candidate node
+          bfs_load_node(k);
+          // Load min and max corners of the node's box
+          vector_type bbox_min = bfs_get_node_min_corner();
+          vector_type bbox_max = bfs_get_node_max_corner();
+
+          // ToDo: This is possibly incorrect
+          scalar node_dist2 = box_farthest_distance2(query_position,
+                                                     bbox_min,
+                                                     bbox_max);
+
+           if(node_dist2 < candidate_distances2[max_distance_idx])
+           {
+
+             candidate_distances2[max_distance_idx] = node_dist2;
+             bfs_deselect(selection_candidates[max_distance_idx]);
+
+             selection_candidates[max_distance_idx] = k;
+             bfs_select(k);
+
+             knn_update_max_distance(&max_distance_idx,
+                                     candidate_distances2);
+           }
+        }
+      }
+    )
+    QCL_PREPROCESSOR(define,
+      bfs_particle_processor(num_available_particles)
+      {
+        // Clear candidate distances from node levels
+        for(uint k = 0; k < K; ++k)
+          candidate_distances2[k] = FLT_MAX;
+
+        particle_type current_particle;
+        vector_type delta;
+        for(uint k = 0; k < num_available_particles; ++k)
+        {
+          current_particle = bfs_load_particle(k);
+
+          delta = PARTICLE_POSITION(current_particle) - query_position;
+          scalar dist2 = VECTOR_NORM2(delta);
+
+          if(dist2 < candidate_distances2[max_distance_idx])
+          {
+             knn_add_candidate(current_particle,
+                               dist2,
+                               &max_distance_idx,
+                               candidate_distances2,
+                               candidates);
+          }
+        }
+      }
+    )
+    QCL_PREPROCESSOR(define,
+      dfs_particle_processor(selection_result_ptr,
+                             particle_idx,
+                             current_particle)
       {
         vector_type delta = PARTICLE_POSITION(current_particle)
                           - query_position;
@@ -119,34 +210,13 @@ public:
 
         if(*selection_result_ptr)
         {
-          candidate_distances2[max_distance_idx] = dist2;
-          candidates[max_distance_idx] = current_particle;
-          max_distance_idx = 0;
-          for(int i = 0; i < K; ++i)
-            if(candidate_distances2[i] >
-               candidate_distances2[max_distance_idx])
-              max_distance_idx = i;
+          knn_add_candidate_particle(current_particle,
+                                     dist2,
+                                     &max_distance_idx,
+                                     candidate_distances2,
+                                     candidates);
         }
       }
-    )
-    QCL_PREPROCESSOR(define,
-      node_select_handler(node_index,
-                          bbox_min_corner,
-                          bbox_max_corner)
-    )
-    QCL_PREPROCESSOR(define,
-      particle_select_handler(particle_index,
-                              particle)
-    )
-    QCL_PREPROCESSOR(define,
-      node_discard_handler(current_node_key_ptr,
-                           node_idx,
-                           bbox_min_corner,
-                           bbox_max_corner)
-    )
-    QCL_PREPROCESSOR(define,
-      particle_discard_handler(particle_index,
-                               particle)
     )
     R"(
       #define declare_full_query_parameter_set() \

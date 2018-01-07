@@ -2,7 +2,7 @@
  * This file is part of SpatialCL, a library for the spatial processing of
  * particles.
  *
- * Copyright (c) 2017 Aksel Alpay
+ * Copyright (c) 2017, 2018 Aksel Alpay
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -40,6 +40,7 @@ public:
   virtual void push_full_arguments(qcl::kernel_call& call) = 0;
   virtual std::size_t get_num_independent_queries() const = 0;
 };
+
 
 }
 }

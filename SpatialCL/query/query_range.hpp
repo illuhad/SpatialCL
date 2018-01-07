@@ -2,7 +2,7 @@
  * This file is part of SpatialCL, a library for the spatial processing of
  * particles.
  *
- * Copyright (c) 2017 Aksel Alpay
+ * Copyright (c) 2017, 2018 Aksel Alpay
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -86,52 +86,73 @@ public:
     QCL_INCLUDE_MODULE(math::geometry<Type_descriptor>)
     QCL_IMPORT_CONSTANT(Max_retrieved_particles)
     QCL_PREPROCESSOR(define,
-      dfs_node_selection_criterion(selection_result_ptr,
-                                   current_node_key_ptr,
-                                   node_index,
-                                   bbox_min_corner,
-                                   bbox_max_corner)
+      dfs_node_selector(selection_result_ptr,
+                        current_node_key_ptr,
+                        node_index,
+                        bbox_min_corner,
+                        bbox_max_corner)
         *selection_result_ptr = box_box_intersection(
                                       bbox_min_corner,
                                       bbox_max_corner,
                                       query_range_min,
                                       query_range_max);
-      if(get_query_id() == 0)
-        printf("Node %d selection state: %d\n",node_index,*selection_result_ptr);
     )
     QCL_PREPROCESSOR(define,
-      particle_selection_criterion(selection_result_ptr,
-                                   particle_idx,
-                                   current_particle)
+      dfs_particle_processor(selection_result_ptr,
+                             particle_idx,
+                             current_particle)
+      {
         *selection_result_ptr = box_contains_particle(query_range_min,
                                                       query_range_max,
                                                       current_particle);
-    )
-    QCL_PREPROCESSOR(define,
-      node_select_handler(node_index,
-                          bbox_min_corner,
-                          bbox_max_corner)
-    )
-    QCL_PREPROCESSOR(define,
-      particle_select_handler(particle_index,
-                              particle)
-        if(num_selected_particles < Max_retrieved_particles)
+        if(*selection_result_ptr)
         {
-          ulong result_pos = tid*Max_retrieved_particles + num_selected_particles;
-          query_result[result_pos] = particle;
-          ++num_selected_particles;
+          if(num_selected_particles < Max_retrieved_particles)
+          {
+            ulong result_pos = get_query_id()*Max_retrieved_particles
+                             + num_selected_particles;
+            query_result[result_pos] = current_particle;
+            ++num_selected_particles;
+          }
         }
+      }
+    )
+    QCL_PREPROCESSOR(define,
+      bfs_node_selector(max_selectable_nodes,
+                        num_available_nodes)
+      {
+        for(uint k = 0; k < num_available_nodes; ++k)
+        {
+          bfs_load_node(k);
 
+          vector_type bbox_min = bfs_get_node_min_corner();
+          vector_type bbox_max = bfs_get_node_max_corner();
+
+          if(box_box_intersection(bbox_min, bbox_max,
+                                  query_range_min, query_range_max))
+            bfs_select(k);
+        }
+      }
     )
     QCL_PREPROCESSOR(define,
-      node_discard_handler(current_node_key_ptr,
-                           node_idx,
-                           bbox_min_corner,
-                           bbox_max_corner)
-    )
-    QCL_PREPROCESSOR(define,
-      particle_discard_handler(particle_index,
-                               particle)
+      bfs_particle_processor(num_available_particles)
+      {
+        for(uint k = 0; k < num_available_particles; ++k)
+        {
+          particle_type p = bfs_load_particle(k);
+
+          if(box_contains_particle(query_range_min,
+                                   query_range_max,
+                                   p)
+             && (num_selected_particles < Max_retrieved_particles))
+          {
+            ulong result_pos = get_query_id()*Max_retrieved_particles
+                             + num_selected_particles;
+            query_result[result_pos] = p;
+            ++num_selected_particles;
+          }
+        }
+      }
     )
     R"(
       #define declare_full_query_parameter_set() \
@@ -165,10 +186,7 @@ public:
       get_num_queries()
         num_queries
     )
-
   )
-
-
 };
 
 

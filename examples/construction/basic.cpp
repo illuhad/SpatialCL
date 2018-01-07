@@ -32,7 +32,7 @@
 
 #include <SpatialCL/tree.hpp>
 #include "../common/environment.hpp"
-#include "../common/random_particles.hpp"
+#include "../common/random_vectors.hpp"
 
 void print_vector(const std::vector<cl_float4>& data, std::size_t begin, std::size_t size)
 {
@@ -58,7 +58,7 @@ int main(int argc, char** argv)
 
   // Create random particles
   std::vector<cl_float4> particles;
-  common::random_particles<float, 3> rnd;
+  common::random_vectors<float, 3> rnd;
   rnd(128, particles);
 
   // Construct tree from particles
@@ -76,6 +76,7 @@ int main(int argc, char** argv)
   ctx->memcpy_d2h<cl_float4>(host_max_corners.data(), bbox_max_corners, gpu_tree.get_num_nodes());
   ctx->memcpy_d2h<cl_float4>(sorted_particles.data(), gpu_tree.get_sorted_particles(), particles.size());
 
+  // Print nodes at the different tree levels
 
   std::cout << "l6min=";
   print_vector(host_min_corners,0,64);

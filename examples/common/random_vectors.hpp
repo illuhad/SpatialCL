@@ -27,8 +27,8 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef RANDOM_PARTICLES_HPP
-#define RANDOM_PARTICLES_HPP
+#ifndef RANDOM_VECTORS_HPP
+#define RANDOM_VECTORS_HPP
 
 #include <random>
 #include <SpatialCL/types.hpp>
@@ -37,7 +37,7 @@ namespace common {
 
 template<class Scalar_type,
          std::size_t Num_dimensions>
-class random_particles
+class random_vectors
 {
 public:
   using vector_type = typename spatialcl::cl_vector_type
@@ -45,7 +45,7 @@ public:
                          Scalar_type,
                          Num_dimensions
                       >::value;
-  random_particles(std::size_t seed = 1245)
+  random_vectors(std::size_t seed = 1245)
     : _generator{seed}
   {}
 

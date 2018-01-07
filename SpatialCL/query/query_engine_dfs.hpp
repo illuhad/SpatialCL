@@ -157,25 +157,17 @@ public:
                                      &current_bbox_max_corner);
 
           int node_selected = 0;
-          dfs_node_selection_criterion(&node_selected,
-                                       &current_node,
-                                       node_idx,
-                                       current_bbox_min_corner,
-                                       current_bbox_max_corner);
+          dfs_node_selector(&node_selected,
+                            &current_node,
+                            node_idx,
+                            current_bbox_min_corner,
+                            current_bbox_max_corner);
           if(node_selected)
           {
-            node_select_handler(node_idx,
-                                current_bbox_min_corner,
-                                current_bbox_max_corner);
-
             current_node = binary_tree_get_children_begin(&current_node);
           }
           else
           {
-            node_discard_handler(&current_node,
-                                 node_idx,
-                                 current_bbox_min_corner,
-                                 current_bbox_max_corner);
             num_covered_particles += BT_LEAVES_PER_NODE(current_node.level,
                                                         effective_num_levels);
 
@@ -208,20 +200,15 @@ public:
                                              &current_particle);
 
           int particle_selected = 0;
-          particle_selection_criterion(&particle_selected,
-                                       particle_idx,
-                                       current_particle);
+          dfs_particle_processor(&particle_selected,
+                                 particle_idx,
+                                 current_particle);
           if(particle_selected)
           {
-            particle_select_handler(particle_idx,
-                                    current_particle);
             current_node.local_node_id++;
           }
           else
           {
-            particle_discard_handler(particle_idx,
-                                     current_particle);
-
             if(binary_tree_is_right_child(&current_node))
             {
               // if we are at a right child node, go up to the parent's

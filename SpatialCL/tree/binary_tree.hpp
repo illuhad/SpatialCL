@@ -2,7 +2,7 @@
  * This file is part of SpatialCL, a library for the spatial processing of
  * particles.
  *
- * Copyright (c) 2017 Aksel Alpay
+ * Copyright (c) 2017, 2018 Aksel Alpay
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -124,6 +124,7 @@ public:
       #define BT_LEVEL_OFFSET(level, num_levels) (~n_bits_set(level+1) & BT_LEVEL_OFFSET_MASK(num_levels))
       #define BT_LEAVES_PER_NODE(level, num_levels) (1ul << (num_levels - level - 1))
       #define BT_NUM_NODES(level) (1ul << level)
+      #define BT_LOCAL_NODE_ID_OF_LEFT_CHILD(parent_local_node_id) (parent_local_node_id << 1)
     )"
     QCL_RAW
     (

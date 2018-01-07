@@ -41,13 +41,26 @@ QCL_STANDALONE_SOURCE
   QCL_INCLUDE_MODULE(configuration<Type_descriptor>)
   QCL_RAW
   (
+    // Calculates minimum distance squared to a box. Assumes
+    // that the point is outside of the box
     scalar box_distance2(vector_type point,
                          vector_type box_min,
                          vector_type box_max)
     {
-      vector_type zero = (vector_type)0.0f;
-      vector_type delta = fmax(box_min - point,
-                              fmax(zero, point - box_max));
+      vector_type delta = fmin(fabs(point - box_min),
+                               fabs(point - box_max));
+      return VECTOR_NORM2(delta);
+    }
+
+    // Calculates maximum distance squared to a box,
+    // i.e. the distance from the point to the farthest
+    // point on the box surface
+    scalar box_farthest_distance2(vector_type point,
+                                  vector_type box_min,
+                                  vector_type box_max)
+    {
+      vector_type delta = fmax(fabs(point - box_min),
+                               fabs(point - box_max));
       return VECTOR_NORM2(delta);
     }
 
