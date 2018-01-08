@@ -2,7 +2,7 @@
  * This file is part of SpatialCL, a library for the spatial processing of
  * particles.
  *
- * Copyright (c) 2017 Aksel Alpay
+ * Copyright (c) 2017, 2018 Aksel Alpay
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,8 +29,12 @@
 #ifndef QUERY_ENGINE_DFS_HPP
 #define QUERY_ENGINE_DFS_HPP
 
+#include <QCL/qcl.hpp>
+#include <QCL/qcl_module.hpp>
+
 #include "../configuration.hpp"
 #include "../tree/binary_tree.hpp"
+
 
 namespace spatialcl {
 namespace query {
@@ -45,7 +49,7 @@ enum depth_first_iteration_strategy
 template<class Type_descriptor,
          class Handler_module,
          depth_first_iteration_strategy Iteration_strategy>
-class depth_first_query
+class depth_first
 {
 public:
   static constexpr std::size_t group_size = 256;
@@ -78,7 +82,7 @@ public:
     return call.enqueue_kernel();
   }
 
-  QCL_MAKE_MODULE(depth_first_query)
+  QCL_MAKE_MODULE(depth_first)
   QCL_ENTRYPOINT(query)
   QCL_MAKE_SOURCE(
     QCL_INCLUDE_MODULE(configuration<Type_descriptor>)

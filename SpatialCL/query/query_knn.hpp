@@ -187,11 +187,11 @@ public:
 
           if(dist2 < candidate_distances2[max_distance_idx])
           {
-             knn_add_candidate(current_particle,
-                               dist2,
-                               &max_distance_idx,
-                               candidate_distances2,
-                               candidates);
+             knn_add_candidate_particle(current_particle,
+                                        dist2,
+                                        &max_distance_idx,
+                                        candidate_distances2,
+                                        candidates);
           }
         }
       }

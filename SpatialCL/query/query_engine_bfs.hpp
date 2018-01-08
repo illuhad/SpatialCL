@@ -29,6 +29,10 @@
 #ifndef QUERY_ENGINE_BFS_HPP
 #define QUERY_ENGINE_BFS_HPP
 
+
+#include <QCL/qcl.hpp>
+#include <QCL/qcl_module.hpp>
+
 #include "../configuration.hpp"
 #include "../tree/binary_tree.hpp"
 
@@ -36,12 +40,19 @@ namespace spatialcl {
 namespace query {
 namespace engine {
 
+/// Breadth-first query engine that stores the
+/// query state in registers, and is hence well suited
+/// for queries where the number of investigated nodes
+/// per level is known to be small enough to fit in the
+/// GPU's registers.
 template<class Type_descriptor,
          class Handler_module,
          std::size_t Max_selected_nodes>
-class bfs_register_query
+class register_breadth_first
 {
 public:
+  static constexpr std::size_t group_size = 256;
+
   using handler_type = Handler_module;
 
   cl_int operator()(const qcl::device_context_ptr& ctx,
@@ -54,9 +65,23 @@ public:
                     Handler_module& handler,
                     cl::Event* evt = nullptr)
   {
+    qcl::kernel_call call = query(ctx,
+                                  cl::NDRange{handler.get_num_independent_queries()},
+                                  cl::NDRange{group_size},
+                                  evt);
+
+    call.partial_argument_list(particles,
+                               bbox_min_corner,
+                               bbox_max_corner,
+                               static_cast<cl_ulong>(num_particles),
+                               static_cast<cl_ulong>(effective_num_particles),
+                               static_cast<cl_ulong>(effective_num_levels));
+
+    handler.push_full_arguments(call);
+    return call.enqueue_kernel();
   }
 
-  QCL_MAKE_MODULE(bfs_register_query)
+  QCL_MAKE_MODULE(register_breadth_first)
   QCL_ENTRYPOINT(query)
   QCL_MAKE_SOURCE(
     QCL_INCLUDE_MODULE(configuration<Type_descriptor>)
@@ -74,7 +99,7 @@ public:
     // directly follows the left child.
     QCL_PREPROCESSOR(define,
       MAP_AVAILABLE_CHILDREN_INDEX_TO_LNID(parent_lnid_buffer, id)
-        (BT_LOCAL_NODE_ID_OF_LEFT_CHILD(parent_lnid_buffer[id >> 1]) + (id&1))
+        (BT_LOCAL_NODE_ID_OF_LEFT_CHILD(parent_lnid_buffer[(id) >> 1]) + ((id)&1))
     )
     QCL_PREPROCESSOR(define, get_query_id() tid)
     QCL_PREPROCESSOR(define, bfs_load_node(id)
@@ -82,7 +107,7 @@ public:
       binary_tree_key_t node_key;
       node_key.level = level;
       node_key.local_node_id =
-        MAP_AVAILABLE_CHILDREN_INDEX_TO_LNID(available_nodes_local_id, id)
+        MAP_AVAILABLE_CHILDREN_INDEX_TO_LNID(available_nodes_local_id, id);
 
       global_node_idx = binary_tree_key_encode_global_id(&node_key,
                                                          effective_num_levels);
@@ -125,7 +150,7 @@ public:
         root_node.level = 0;
         root_node.local_node_id = 0;
 
-        return binary_tree_key_encode_global_id(&root_nodex,
+        return binary_tree_key_encode_global_id(&root_node,
                                                 num_levels)
                - num_particles;
       }
@@ -182,7 +207,7 @@ public:
                                          num_particles))
               --available_children;
 
-            // Will be filled by bfs_select_node calls in
+            // Will be filled by bfs_load_node calls in
             // the node selector
             ulong global_node_idx = 0;
             // Run node selector to obtain children for investigation
@@ -204,7 +229,7 @@ public:
                 // make sure there are no more available nodes
                 // selected than the maximum allowed
                 num_available_nodes = min(num_available_nodes+1,
-                                          Max_selected_nodes);
+                                          (uint)Max_selected_nodes);
               }
             }
           }

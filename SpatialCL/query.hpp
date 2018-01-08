@@ -30,6 +30,8 @@
 #define QUERY_HPP
 
 #include "query/query_engine_dfs.hpp"
+#include "query/query_engine_bfs.hpp"
+
 #include "query/query_knn.hpp"
 #include "query/query_range.hpp"
 
@@ -37,7 +39,7 @@ namespace spatialcl {
 namespace query {
 
 template<class Type_descriptor, class Handler>
-using strict_dfs_query_engine = query::engine::depth_first_query
+using strict_dfs_query_engine = query::engine::depth_first
   <
     Type_descriptor,
     Handler,
@@ -45,7 +47,7 @@ using strict_dfs_query_engine = query::engine::depth_first_query
   >;
 
 template<class Type_descriptor, class Handler>
-using relaxed_dfs_query_engine = query::engine::depth_first_query
+using relaxed_dfs_query_engine = query::engine::depth_first
   <
     Type_descriptor,
     Handler,
@@ -68,12 +70,23 @@ using relaxed_dfs_range_query_engine = relaxed_dfs_query_engine
     box_range_query<Type_descriptor, Max_retrieved_particles>
   >;
 
+
+template<class Type_descriptor, std::size_t Max_retrieved_particles>
+using register_bfs_range_query_engine =
+  query::engine::register_breadth_first
+  <
+    Type_descriptor,
+    box_range_query<Type_descriptor, Max_retrieved_particles>,
+    Max_retrieved_particles
+  >;
+
 template<class Type_descriptor, std::size_t Max_retrieved_particles>
 using default_range_query_engine = relaxed_dfs_range_query_engine
   <
     Type_descriptor,
     Max_retrieved_particles
   >;
+
 
 /********** KNN Queries ********************************/
 
@@ -92,7 +105,16 @@ using relaxed_dfs_knn_query_engine = relaxed_dfs_query_engine
   >;
 
 template<class Type_descriptor, std::size_t K>
-using default_knn_query_engine = relaxed_dfs_knn_query_engine
+using register_bfs_knn_query_engine =
+  query::engine::register_breadth_first
+  <
+    Type_descriptor,
+    knn_query<Type_descriptor, K>,
+    K
+  >;
+
+template<class Type_descriptor, std::size_t K>
+using default_knn_query_engine = register_bfs_knn_query_engine
   <
     Type_descriptor,
     K
