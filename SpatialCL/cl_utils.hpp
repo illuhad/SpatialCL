@@ -36,6 +36,8 @@
 
 namespace cl_utils {
 
+#define NODEBUG
+
 #ifdef NODEBUG
  const int CL_NODEBUG = 1;
 #else
@@ -50,10 +52,10 @@ QCL_STANDALONE_SOURCE
   #if CL_NODEBUG == 0
     #define NAMED_ASSERT(name, cond) \
       if(!(cond)) \
-        printf("Assert failed: %s, Line %d", name, __LINE__);
+        printf("Assert failed: %s, Line %d\n", name, __LINE__)
     #define ASSERT(cond) \
       if(!(cond)) \
-        printf("Assert failed: %s, Line %d\n", __FILE__, __LINE__);
+        printf("Assert failed: %s, Line %d\n", __FILE__, __LINE__)
   #else
     #define ASSERT(cond)
     #define NAMED_ASSERT(name, cond)

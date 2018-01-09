@@ -43,6 +43,9 @@ template<class Type_descriptor, std::size_t K>
 class knn_query : public basic_query
 {
 public:
+  static_assert(K > 0, "K must be non-zero, or do you really want"
+                       "to find the zero nearest neighbors?");
+
   knn_query(const cl::Buffer& query_points,
             const cl::Buffer& results,
             std::size_t num_queries)
@@ -138,8 +141,9 @@ public:
           // Clear candidate distances from remaining information
           // from previous levels
           candidate_distances2[k] = FLT_MAX;
-          selection_candidates[k] = 0;
+          selection_candidates[k] = INT_MAX;
         }
+        max_distance_idx = 0;
 
         for(uint k = 0; k < num_available_nodes; ++k)
         {
@@ -150,22 +154,33 @@ public:
           vector_type bbox_max = bfs_get_node_max_corner();
 
           // ToDo: This is possibly incorrect
-          scalar node_dist2 = box_farthest_distance2(query_position,
-                                                     bbox_min,
-                                                     bbox_max);
+          scalar node_dist2 = 0.0f;
+          if(!box_contains_point(bbox_min, bbox_max, query_position))
+             node_dist2 = box_distance2(query_position,
+                                        bbox_min,
+                                        bbox_max);
 
-           if(node_dist2 < candidate_distances2[max_distance_idx])
-           {
+          NAMED_ASSERT("knn_query: max_distance_idx bounds",
+                       max_distance_idx < K);
 
-             candidate_distances2[max_distance_idx] = node_dist2;
-             bfs_deselect(selection_candidates[max_distance_idx]);
+          if(node_dist2 < candidate_distances2[max_distance_idx])
+          {
+            // Make space by removing the node that is farthest
+            uint farthest_node = selection_candidates[max_distance_idx];
+            if(farthest_node != INT_MAX)
+              bfs_deselect(farthest_node);
 
-             selection_candidates[max_distance_idx] = k;
-             bfs_select(k);
+            // Overwrite worst node with the current node's distance
+            // and id
+            candidate_distances2[max_distance_idx] = node_dist2;
+            selection_candidates[max_distance_idx] = k;
+            // Mark current for investigation in the next level
+            bfs_select(k);
 
-             knn_update_max_distance(&max_distance_idx,
-                                     candidate_distances2);
-           }
+            // Update which of the candidate nodes is now farthest
+            knn_update_max_distance(&max_distance_idx,
+                                    candidate_distances2);
+          }
         }
       }
     )

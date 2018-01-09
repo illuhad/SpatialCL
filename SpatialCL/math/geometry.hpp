@@ -69,8 +69,6 @@ QCL_STANDALONE_SOURCE
                              vector_type b_min,
                              vector_type b_max)
     {
-      // if b_min > a_max || a_min > b_max
-      //   return false
 
       int_vector_type intersects = ((a_max >= b_min) && (b_max >= a_min));
       int result = DIMENSIONALITY_SWITCH(intersects.x & intersects.y & 1,

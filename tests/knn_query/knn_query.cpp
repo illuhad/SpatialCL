@@ -45,8 +45,8 @@ using tree_type = spatialcl::hilbert_bvh_sp3d_tree<particle_dimension>;
 using type_system = tree_type::type_system;
 using scalar = type_system::scalar;
 
-const std::size_t num_particles = 128;
-const std::size_t num_queries = 128;
+const std::size_t num_particles = 32000;
+const std::size_t num_queries = 2000;
 constexpr std::size_t K = 8;
 
 using particle_type = spatialcl::configuration<type_system>::particle_type;
@@ -70,6 +70,7 @@ std::size_t execute_knn_query_test(const qcl::device_context_ptr& ctx,
     queries.size()
   };
 
+  std::cout << "Executing query..." << std::endl;
   // Executy query
   tree.execute_query(query_engine, query_handler);
 
@@ -80,6 +81,7 @@ std::size_t execute_knn_query_test(const qcl::device_context_ptr& ctx,
   std::vector<particle_type> host_results;
   result.read(host_results);
 
+  std::cout << "Verifying results, please wait..." << std::endl;
   // Verify results
   common::verification::naive_cpu_knn_verifier<type_system, K> verifier{
     host_queries

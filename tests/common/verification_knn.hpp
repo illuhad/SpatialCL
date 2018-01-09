@@ -99,6 +99,7 @@ public:
 
       auto results_begin = results.begin() + i * K;
       auto results_end = results_begin + K;
+
       for(particle_type p : knn)
         if(std::find(results_begin, results_end, p) == results_end)
           ++num_errors;
