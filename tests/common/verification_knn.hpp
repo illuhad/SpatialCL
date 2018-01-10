@@ -80,7 +80,7 @@ public:
   /// Verifies the result of a KNN query
   /// \return The number of detected wrong results
   /// \param particles The particle set of which the KNN should be found
-  /// \param results The results of a KNN query described by the set of
+  /// \param results The results of KNN queries described by the set of
   /// query points supplied in the constructor. Assumes that the memory layout
   /// is such that the i-th result of query j is located at
   /// \c result[j*K + i].
