@@ -131,6 +131,7 @@ public:
           if(box_box_intersection(bbox_min, bbox_max,
                                   query_range_min, query_range_max))
             bfs_select(k);
+
         }
       }
     )

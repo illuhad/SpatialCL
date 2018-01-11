@@ -45,6 +45,9 @@ public:
                                                                    "Intel"});
     qcl::global_context_ptr global_ctx = _env.create_global_context(platform,
                                                                     CL_DEVICE_TYPE_GPU);
+    if(global_ctx->get_num_devices() == 0)
+      throw std::runtime_error("No available OpenCL devices!");
+
     _ctx = global_ctx->device();
 
     std::cout << "Using OpenCL device:\n";

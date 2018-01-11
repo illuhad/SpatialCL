@@ -48,7 +48,7 @@ using tree_type = spatialcl::hilbert_bvh_sp3d_tree<particle_dimension>;
 using type_system = tree_type::type_system;
 using scalar = type_system::scalar;
 
-constexpr scalar query_diameter = 0.2f;
+constexpr scalar query_diameter = 0.05f;
 
 
 using particle_type = spatialcl::configuration<type_system>::particle_type;

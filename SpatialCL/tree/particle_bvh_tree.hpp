@@ -29,6 +29,8 @@
 #ifndef PARTICLE_BVH_TREE
 #define PARTICLE_BVH_TREE
 
+#include <QCL/qcl_array.hpp>
+
 #include <boost/compute.hpp>
 #include <cassert>
 #include <functional>
@@ -74,12 +76,12 @@ public:
 
   const cl::Buffer& get_bbox_min_corners() const
   {
-    return this->_bb_min_corners;
+    return this->_bb_min_corners.get_buffer();
   }
 
   const cl::Buffer& get_bbox_max_corners() const
   {
-    return this->_bb_max_corners;
+    return this->_bb_max_corners.get_buffer();
   }
 
   std::size_t get_num_nodes() const
@@ -90,6 +92,11 @@ public:
   std::size_t get_effective_num_levels() const
   {
     return this->_num_levels;
+  }
+
+  std::size_t get_num_node_levels() const
+  {
+    return get_effective_num_levels() - 1;
   }
 
   const cl::Buffer& get_sorted_particles() const
@@ -104,8 +111,8 @@ public:
   {
     return engine( this->_ctx,
                    this->_sorted_particles,
-                   this->_bb_min_corners,
-                   this->_bb_max_corners,
+                   this->_bb_min_corners.get_buffer(),
+                   this->_bb_max_corners.get_buffer(),
                    this->_num_particles,
                    this->_effective_num_particles,
                    this->_num_levels,
@@ -240,13 +247,15 @@ private:
     // and the effective number of particles
     _effective_num_particles = get_next_power_of_two(_num_particles);
     _num_levels = get_highest_set_bit(_effective_num_particles)+1;
+#ifndef NODEBUG
     std::cout << "Building tree with "
               << _num_levels << " levels over "
               << _effective_num_particles << " effective particles and "
               << _num_particles << " real particles." << std::endl;
+#endif
+    _bb_min_corners = qcl::device_array<vector_type>{_ctx, this->_effective_num_particles};
+    _bb_max_corners = qcl::device_array<vector_type>{_ctx, this->_effective_num_particles};
 
-    _ctx->create_buffer<vector_type>(this->_bb_min_corners, this->_effective_num_particles);
-    _ctx->create_buffer<vector_type>(this->_bb_max_corners, this->_effective_num_particles);
     // Now build the lowest layer of nodes. Because the particles
     // themselves are the lowest level, this is actually the second level.
     this->build_lowest_level_bboxes();
@@ -256,7 +265,9 @@ private:
     // built by build_lowest_level_bboxes().
     for(int i = static_cast<int>(_num_levels)-3; i >= 0; --i)
     {
+#ifndef NODEBUG
       std::cout << "Building level " << i << std::endl;
+#endif
       build_higher_level_bboxes(static_cast<unsigned>(i));
     }
   }
@@ -320,8 +331,8 @@ private:
 
   cl::Buffer _sorted_particles;
 
-  cl::Buffer _bb_min_corners;
-  cl::Buffer _bb_max_corners;
+  qcl::device_array<vector_type> _bb_min_corners;
+  qcl::device_array<vector_type> _bb_max_corners;
 
   unsigned _num_levels;
 
