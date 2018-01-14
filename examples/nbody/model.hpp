@@ -44,14 +44,14 @@ template<class Scalar>
 class random_particle_cloud
 {
 public:
-  using vector3d = std::array<Scalar,3>;
+  using host_vector3d = std::array<Scalar,3>;
 
-  random_particle_cloud(const vector3d& position,
-                        const vector3d& width,
+  random_particle_cloud(const host_vector3d& position,
+                        const host_vector3d& width,
                         Scalar mean_mass,
                         Scalar mass_distribution_width,
-                        const vector3d& mean_velocity,
-                        const vector3d& velocity_distribution_width)
+                        const host_vector3d& mean_velocity,
+                        const host_vector3d& velocity_distribution_width)
     : _generator{generate_seed()}
   {
     for(std::size_t i = 0; i < 3; ++i)
