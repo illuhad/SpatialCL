@@ -37,6 +37,7 @@
 
 #include "model.hpp"
 #include "nbody.hpp"
+#include "particle_renderer.hpp"
 
 using scalar = float;
 using particle_type =
@@ -46,6 +47,9 @@ using particle_type =
 constexpr scalar final_time = 100.f;
 constexpr scalar dt = 0.1f;
 constexpr scalar opening_angle = 0.5f;
+
+constexpr std::array<scalar,3> viewport_center{0.0f, 0.0f, 0.0f};
+constexpr std::array<scalar,2> viewport_width{400.f, 400.f};
 
 /// Creates the initial model: two random particle clouds
 void create_model(std::vector<particle_type>& particles)
@@ -140,22 +144,36 @@ int main()
     qcl::device_array<particle_type> device_particles{ctx, particles};
 
     nbody::nbody_simulation<scalar> simulation{ctx, device_particles};
+    nbody::particle_renderer<scalar> renderer{ctx, 512, 512};
 
     std::size_t step_id = 0;
     for(;simulation.get_current_time() < final_time;
         ++step_id)
     {
       std::cout << "t = " << simulation.get_current_time() << std::endl;
+      std::cout << "  Time step..." << std::endl;
       simulation.time_step(opening_angle, dt);
 
-      if(step_id % 1 == 0)
+      std::cout << "  Rendering particles..." << std::endl;
+      renderer.render(device_particles,
+                      viewport_center, viewport_width);
+      std::cout << "  Saving image..." << std::endl;
+
+      renderer.save_png(std::string("nbody_")
+                        +std::to_string(step_id)
+                        +".png");
+
+      if(step_id % 100 == 0)
       {
-        // Save state
-        std::cout << "Saving state..." << std::endl;
+        // Save state as text file
+        std::cout << "  Saving state..." << std::endl;
         save_state(device_particles, step_id);
       }
+
+      std::cout << "  Step complete." << std::endl;
+
     }
-    std::cout << "Saving state..." << std::endl;
+    std::cout << "Saving final state..." << std::endl;
     save_state(device_particles, step_id);
 
   }
