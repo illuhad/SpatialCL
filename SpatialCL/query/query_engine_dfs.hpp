@@ -209,6 +209,7 @@ public:
                                  current_particle);
           if(particle_selected)
           {
+            // Move to next particle
             current_node.local_node_id++;
           }
           else

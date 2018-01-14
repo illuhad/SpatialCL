@@ -89,13 +89,13 @@ struct configuration
     QCL_IMPORT_CONSTANT(dimension)
     R"(
      #if dimension == 2
-      #define PARTICLE_POSITION(p) p.xy
+      #define PARTICLE_POSITION(p) p.s01
       #define CONVERT_VECTOR_TO_CELL_INDEX(v) convert_uint2(v)
       #define VECTOR_NORM2(v) dot(v,v)
      #elif dimension == 3
-      #define PARTICLE_POSITION(p) p.xyzw
+      #define PARTICLE_POSITION(p) p.s0123
       #define CONVERT_VECTOR_TO_CELL_INDEX(v) convert_uint4(v)
-      #define VECTOR_NORM2(v) dot(v.xyz, v.xyz)
+      #define VECTOR_NORM2(v) dot((v).s012, (v).s012)
      #else
       #error Invalid dimension, only 2d and 3d is supported.
      #endif

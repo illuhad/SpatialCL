@@ -2,7 +2,7 @@
  * This file is part of SpatialCL, a library for the spatial processing of
  * particles.
  *
- * Copyright (c) 2017 Aksel Alpay
+ * Copyright (c) 2017, 2018 Aksel Alpay
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -46,7 +46,7 @@ class particle_bvh_tree
 {
 public:
   using particle_type = typename configuration<Type_descriptor>::particle_type;
-  using vector_type = typename configuration<Type_descriptor>::vector_type;
+  using vector_type   = typename configuration<Type_descriptor>::vector_type;
   using boost_particle = typename qcl::to_boost_vector_type<particle_type>::type;
 
   using type_system = Type_descriptor;
@@ -73,6 +73,12 @@ public:
   {
     this->init_bvh_tree(sorter);
   }
+
+  particle_bvh_tree(const qcl::device_context_ptr& ctx,
+                    const qcl::device_array<particle_type>& particles,
+                    const Particle_sorter& sorter = Particle_sorter{})
+    : particle_bvh_tree{ctx, particles.get_buffer(), particles.size(), sorter}
+  {}
 
   const cl::Buffer& get_bbox_min_corners() const
   {
@@ -102,6 +108,16 @@ public:
   const cl::Buffer& get_sorted_particles() const
   {
     return this->_sorted_particles;
+  }
+
+  std::size_t get_num_particles() const
+  {
+    return this->_num_particles;
+  }
+
+  std::size_t get_effective_num_particles() const
+  {
+    return this->_effective_num_particles;
   }
 
   template<class Query_engine_type>
