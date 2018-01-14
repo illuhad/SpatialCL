@@ -57,8 +57,8 @@ void create_model(std::vector<particle_type>& particles)
     {10.0f, 15.0f, 11.0f}, // stddev position
     1.0f, // particle mass
     0.1f, // stddev particle mass
-    {0.0f, -3.0f, 0.0f}, // velocity
-    {1.0f, 2.0f, 1.2f} // stddev velocity
+    {0.0f, -13.0f, 5.0f}, // velocity
+    {5.0f, 20.0f, 12.f} // stddev velocity
   };
 
   nbody::model::random_particle_cloud<float> cloud1_sampler{
@@ -66,8 +66,8 @@ void create_model(std::vector<particle_type>& particles)
     {17.0f, 7.0f, 5.0f}, // stddev position
     1.3f, // particle mass
     0.2f, // stddev particle mass
-    {-2.5f, 0.5f, 0.0f}, // velocity
-    {2.0f, 1.0f, 0.8f} // stddev velocity
+    {-2.5f, 10.0f, 0.0f}, // velocity
+    {18.0f, 11.f, 8.f} // stddev velocity
   };
 
   cloud0_sampler.sample(100000, cloud0);
