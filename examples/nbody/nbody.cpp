@@ -148,7 +148,7 @@ int main()
       std::cout << "t = " << simulation.get_current_time() << std::endl;
       simulation.time_step(opening_angle, dt);
 
-      if(step_id % 100 == 0)
+      if(step_id % 1 == 0)
       {
         // Save state
         std::cout << "Saving state..." << std::endl;
