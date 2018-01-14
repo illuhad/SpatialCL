@@ -92,7 +92,7 @@ public:
   QCL_MAKE_MODULE(nbody_query_handler)
   QCL_MAKE_SOURCE(
     QCL_INCLUDE_MODULE(spatialcl::configuration<nbody_type_descriptor<Scalar>>)
-    QCL_PREPROCESSOR(define, gravitational_softening_squared 0.01f)
+    QCL_PREPROCESSOR(define, gravitational_softening_squared 1.e-4f)
     QCL_PREPROCESSOR(define,
         dfs_node_selector(selection_result_ptr,
                           current_node_key_ptr,

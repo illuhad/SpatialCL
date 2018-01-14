@@ -136,6 +136,25 @@ public:
                    evt);
   }
 
+
+  void rebuild_bounding_boxes()
+  {
+    // Build the lowest layer of nodes. Because the particles
+    // themselves are the lowest level, this is actually the second level.
+    this->build_lowest_level_bboxes();
+
+    // Build the next layers. We start from num_levels-3, because num_levels-1 corresponds
+    // to the particle layer, and num_levels-2 is the lowest node layer that was already
+    // built by build_lowest_level_bboxes().
+    for(int i = static_cast<int>(_num_levels)-3; i >= 0; --i)
+    {
+#ifndef NODEBUG
+      std::cout << "Building level " << i << std::endl;
+#endif
+      build_higher_level_bboxes(static_cast<unsigned>(i));
+    }
+  }
+
   QCL_MAKE_MODULE(particle_bvh_tree)
   QCL_ENTRYPOINT(bvh_tree_build_ll_bbox)
   QCL_ENTRYPOINT(bvh_tree_build_bbox)
@@ -250,6 +269,7 @@ public:
       }
     )
   )
+
 private:
   void init_bvh_tree(const Particle_sorter& sorter)
   {
@@ -272,20 +292,7 @@ private:
     _bb_min_corners = qcl::device_array<vector_type>{_ctx, this->_effective_num_particles};
     _bb_max_corners = qcl::device_array<vector_type>{_ctx, this->_effective_num_particles};
 
-    // Now build the lowest layer of nodes. Because the particles
-    // themselves are the lowest level, this is actually the second level.
-    this->build_lowest_level_bboxes();
-
-    // Build the next layers. We start from num_levels-3, because num_levels-1 corresponds
-    // to the particle layer, and num_levels-2 is the lowest node layer that was already
-    // built by build_lowest_level_bboxes().
-    for(int i = static_cast<int>(_num_levels)-3; i >= 0; --i)
-    {
-#ifndef NODEBUG
-      std::cout << "Building level " << i << std::endl;
-#endif
-      build_higher_level_bboxes(static_cast<unsigned>(i));
-    }
+    this->rebuild_bounding_boxes();
   }
 
   static unsigned get_highest_set_bit(uint64_t x)
