@@ -69,6 +69,8 @@ using double_precision3d = generic<double, 3, Num_particle_components>;
 template<class Type_descriptor>
 struct configuration
 {
+  QCL_MAKE_MODULE(configuration)
+
   using scalar = typename Type_descriptor::scalar;
   using cell_index_type = typename cl_vector_type<unsigned, Type_descriptor::dimension>::value;
   using int_vector_type = typename cl_vector_type<int, Type_descriptor::dimension>::value;
@@ -79,7 +81,7 @@ struct configuration
   static_assert(dimension == 2 || dimension == 3,
                 "Only 2D and 3D is supported");
 
-  QCL_MAKE_MODULE(configuration)
+private:
   QCL_MAKE_SOURCE(
     QCL_IMPORT_TYPE(cell_index_type)
     QCL_IMPORT_TYPE(vector_type)

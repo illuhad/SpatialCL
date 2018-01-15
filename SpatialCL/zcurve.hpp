@@ -42,6 +42,9 @@ template<class Type_descriptor>
 class zcurve : public position_generator<Type_descriptor>
 {
 public:
+  QCL_MAKE_MODULE(zcurve)
+
+
   using vector_type = typename configuration<Type_descriptor>::vector_type;
 
   virtual void operator()(const qcl::device_context_ptr& ctx,
@@ -60,8 +63,6 @@ public:
     qcl::check_cl_error(err, "Could not enqueue generate_zcurve_position kernel");
   }
 
-  QCL_MAKE_MODULE(zcurve)
-
   // Number of cells resolved in 2d along each axis (32 bits set)
   static constexpr unsigned zcurve_num_cells2d = 0xffffffff;
   static constexpr unsigned zcurve_num_resolved_levels2d = 32;
@@ -69,6 +70,7 @@ public:
   static constexpr unsigned zcurve_num_cells3d = 0x1fffff; //21 bits set
   static constexpr unsigned zcurve_num_resolved_levels3d = 21;
 
+private:
   QCL_ENTRYPOINT(generate_zcurve_position)
   QCL_MAKE_SOURCE
   (

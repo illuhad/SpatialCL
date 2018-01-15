@@ -41,7 +41,10 @@ template<class Type_descriptor,
          std::size_t Max_retrieved_particles>
 class box_range_query : public basic_query
 {
-public:
+public:  
+  QCL_MAKE_MODULE(box_range_query)
+
+
   box_range_query(const cl::Buffer& query_ranges_min,
                   const cl::Buffer& query_ranges_max,
                   const cl::Buffer& result_retrieved_particles,
@@ -78,8 +81,7 @@ private:
   cl::Buffer _result;
   cl::Buffer _num_selected_particles;
   std::size_t _num_queries;
-public:
-  QCL_MAKE_MODULE(box_range_query)
+
   QCL_MAKE_SOURCE
   (
     QCL_INCLUDE_MODULE(configuration<Type_descriptor>)

@@ -70,6 +70,7 @@ public:
   static constexpr unsigned hilbert_num_cells3d = 0x1fffff; //21 bits set
   static constexpr unsigned hilbert_num_resolved_levels3d = 21;
 
+private:
   QCL_ENTRYPOINT(generate_hilbert_position)
   QCL_MAKE_SOURCE
   (

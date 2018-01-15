@@ -52,6 +52,7 @@ template<class Scalar>
 class particle_renderer
 {
 public:
+  QCL_MAKE_MODULE(particle_renderer)
 
   using particle_type =
     typename spatialcl::configuration<nbody_type_descriptor<Scalar>>::particle_type;
@@ -73,10 +74,12 @@ public:
               const std::array<Scalar,3>& render_plane_center,
               const std::array<Scalar,2>& render_plane_size)
   {
-    cl_int err = _ctx->get_command_queue().enqueueFillBuffer<cl_uint>(
-          _rgb_histogram.get_buffer(),
-          0,0,
-          _rgb_histogram.size()*sizeof(cl_uint));
+    // We do not use enqueueFillBuffer to reset the buffer to 0
+    // because the pocl cuda backend currently does not support it.
+    cl_int err = reset_buffer(_ctx,
+                              cl::NDRange{_bins_x * _bins_y},
+                              cl::NDRange{128})(_rgb_histogram,
+                                                static_cast<cl_ulong>(_bins_x*_bins_y));
 
     qcl::check_cl_error(err, "Could not reset histogram buffer");
 
@@ -168,7 +171,8 @@ public:
 
   static constexpr Scalar mass_quantum = 0.01f;
 
-  QCL_MAKE_MODULE(particle_renderer)
+private:
+  QCL_ENTRYPOINT(reset_buffer)
   QCL_ENTRYPOINT(count_masses_per_bin)
   QCL_ENTRYPOINT(mass_to_rgb)
   QCL_MAKE_SOURCE(
@@ -176,6 +180,16 @@ public:
     QCL_IMPORT_TYPE(Scalar)
     QCL_IMPORT_CONSTANT(mass_quantum)
     QCL_RAW(
+      __kernel void reset_buffer(__global uint* buffer,
+                                 ulong num_entries)
+      {
+        size_t tid = get_global_id(0);
+
+        if(tid < num_entries)
+          buffer[tid] = 0;
+      }
+
+
       __kernel void count_masses_per_bin(__global particle_type* particles,
                                          ulong num_particles,
                                          Scalar grid_min_x,
@@ -238,7 +252,7 @@ public:
 
     )
   )
-private:
+
   qcl::device_context_ptr _ctx;
 
   std::size_t _bins_x;

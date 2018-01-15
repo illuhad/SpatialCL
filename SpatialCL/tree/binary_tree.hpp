@@ -115,6 +115,7 @@ class binary_tree
 {
 public:
   QCL_MAKE_MODULE(binary_tree)
+private:
   QCL_MAKE_SOURCE
   (
     QCL_INCLUDE_MODULE(bit_manipulation)

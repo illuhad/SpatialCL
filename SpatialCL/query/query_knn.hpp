@@ -43,6 +43,8 @@ template<class Type_descriptor, std::size_t K>
 class knn_query : public basic_query
 {
 public:
+  QCL_MAKE_MODULE(knn_query)
+
   static_assert(K > 0, "K must be non-zero, or do you really want"
                        "to find the zero nearest neighbors?");
 
@@ -75,8 +77,7 @@ private:
   cl::Buffer _query_points;
   cl::Buffer _results;
   std::size_t _num_queries;
-public:
-  QCL_MAKE_MODULE(knn_query)
+
   QCL_MAKE_SOURCE
   (
     QCL_INCLUDE_MODULE(configuration<Type_descriptor>)

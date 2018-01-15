@@ -35,9 +35,11 @@
 namespace spatialcl {
 
 template<class Type_descriptor>
-struct grid
+class grid
 {
+public:
   QCL_MAKE_MODULE(grid)
+private:
   QCL_MAKE_SOURCE
   (
     QCL_INCLUDE_MODULE(configuration<Type_descriptor>)

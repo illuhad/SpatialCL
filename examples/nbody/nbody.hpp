@@ -49,6 +49,8 @@ template<class Scalar>
 class nbody_query_handler : public spatialcl::query::basic_query
 {
 public:
+  QCL_MAKE_MODULE(nbody_query_handler)
+
   /// \param evaluation_particles particles at whose location the
   /// acceleration should be calculated
   /// \param accelerations output buffer for the accelerations,
@@ -89,7 +91,6 @@ private:
   std::size_t _eval_num_particles;
   Scalar _opening_angle_squared;
 public:
-  QCL_MAKE_MODULE(nbody_query_handler)
   QCL_MAKE_SOURCE(
     QCL_INCLUDE_MODULE(spatialcl::configuration<nbody_type_descriptor<Scalar>>)
     QCL_PREPROCESSOR(define, gravitational_softening_squared 1.e-4f)
@@ -208,7 +209,7 @@ private:
   qcl::device_context_ptr _ctx;
   Scalar _previous_dt;
   Scalar _t;
-public:
+
   QCL_MAKE_MODULE(nbody_integrator)
   QCL_ENTRYPOINT(leapfrog_advance)
   QCL_MAKE_SOURCE(

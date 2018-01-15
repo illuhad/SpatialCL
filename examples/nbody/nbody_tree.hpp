@@ -48,6 +48,8 @@ template<class Scalar>
 class nbody_tree
 {
 public:
+  QCL_MAKE_MODULE(nbody_tree)
+
   using particle_type =
     typename spatialcl::configuration<nbody_type_descriptor<Scalar>>::particle_type;
   using vector_type =
@@ -119,8 +121,6 @@ private:
   qcl::device_context_ptr _ctx;
   gpu_tree_type _tree;
 
-public:
-  QCL_MAKE_MODULE(nbody_tree)
   QCL_ENTRYPOINT(build_ll_monopoles)
   QCL_ENTRYPOINT(build_monopoles)
   QCL_ENTRYPOINT(store_bbox_diameter)

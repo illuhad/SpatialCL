@@ -45,6 +45,8 @@ template<class Particle_sorter, class Type_descriptor>
 class particle_bvh_tree
 {
 public:
+  QCL_MAKE_MODULE(particle_bvh_tree)
+
   using particle_type = typename configuration<Type_descriptor>::particle_type;
   using vector_type   = typename configuration<Type_descriptor>::vector_type;
   using boost_particle = typename qcl::to_boost_vector_type<particle_type>::type;
@@ -155,7 +157,7 @@ public:
     }
   }
 
-  QCL_MAKE_MODULE(particle_bvh_tree)
+private:
   QCL_ENTRYPOINT(bvh_tree_build_ll_bbox)
   QCL_ENTRYPOINT(bvh_tree_build_bbox)
   QCL_MAKE_SOURCE
@@ -270,7 +272,6 @@ public:
     )
   )
 
-private:
   void init_bvh_tree(const Particle_sorter& sorter)
   {
     // First sort the particles spatially

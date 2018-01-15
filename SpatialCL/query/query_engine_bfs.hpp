@@ -52,6 +52,8 @@ template<class Type_descriptor,
 class register_breadth_first
 {
 public:
+  QCL_MAKE_MODULE(register_breadth_first)
+
   static constexpr std::size_t group_size = 256;
 
   using handler_type = Handler_module;
@@ -82,7 +84,7 @@ public:
     return call.enqueue_kernel();
   }
 
-  QCL_MAKE_MODULE(register_breadth_first)
+private:
   QCL_ENTRYPOINT(query)
   QCL_MAKE_SOURCE(
     QCL_INCLUDE_MODULE(configuration<Type_descriptor>)
