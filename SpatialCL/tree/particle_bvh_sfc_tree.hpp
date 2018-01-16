@@ -29,6 +29,11 @@
 #ifndef PARTICLE_BVH_SFC_TREE
 #define PARTICLE_BVH_SFC_TREE
 
+#include <QCL/qcl.hpp>
+#include <QCL/qcl_module.hpp>
+#include <QCL/qcl_boost_compat.hpp>
+#include <QCL/qcl_array.hpp>
+
 #include <memory>
 #include <string>
 
@@ -135,6 +140,7 @@ template<class Key_generator>
 class key_based_sorter
 {
 public:
+
   using key_type = typename Key_generator::key_type;
   using particle_type = typename Key_generator::particle_type;
   using boost_particle_type = typename qcl::to_boost_vector_type<particle_type>::type;
@@ -143,18 +149,27 @@ public:
                   const cl::Buffer& particles,
                   std::size_t num_particles) const
   {
-    cl::Buffer sort_keys;
-    ctx->create_buffer<key_type>(sort_keys, num_particles);
+    qcl::device_array<key_type> sort_keys{ctx, num_particles};
 
     Key_generator sort_key_generator;
-    sort_key_generator(ctx, particles, num_particles, sort_keys);
+    sort_key_generator(ctx, particles, num_particles, sort_keys.get_buffer());
 
-    boost::compute::command_queue boost_queue{ctx->get_command_queue().get()};
-    boost::compute::sort_by_key(qcl::create_buffer_iterator<key_type>(sort_keys,0),
-                                qcl::create_buffer_iterator<key_type>(sort_keys,num_particles),
-                                qcl::create_buffer_iterator<boost_particle_type>(particles, 0),
-                                boost_queue);
+    boost::compute::command_queue boost_queue{
+      ctx->get_command_queue().get()
+    };
+
+    auto keys_begin = qcl::create_buffer_iterator<key_type>(sort_keys.get_buffer(),0);
+    auto keys_end = qcl::create_buffer_iterator<key_type>(sort_keys.get_buffer(),sort_keys.size());
+    auto values_begin = qcl::create_buffer_iterator<boost_particle_type>(particles, 0);
+
+    boost::compute::sort_by_key(
+          keys_begin,
+          keys_end,
+          values_begin,
+          boost_queue);
+
   }
+
 };
 
 }

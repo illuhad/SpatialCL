@@ -135,7 +135,10 @@ public:
 
   void save_png(const std::string& filename) const
   {
-    png::image<png::rgb_pixel> image{_bins_x, _bins_y};
+    png::image<png::rgb_pixel> image{
+      static_cast<png::uint_32>(_bins_x),
+      static_cast<png::uint_32>(_bins_y)
+    };
 
     std::vector<cl_uint> raw_data;
     read_rendered_image(raw_data);

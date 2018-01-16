@@ -293,7 +293,7 @@ public:
     // Calculate acceleration
     // - Build tree
     // -- Discard old tree
-    _tree = nullptr;
+    _tree.reset(nullptr);
     // -- Create new one
     _tree = nbody_tree_ptr{new nbody_tree<Scalar>{_ctx, _particles}};
 
