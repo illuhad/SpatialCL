@@ -56,11 +56,14 @@ void create_model(std::vector<particle_type>& particles)
 {
   std::vector<particle_type> cloud0, cloud1;
 
+  std::size_t cloud0_num_particles = 100000;
+  std::size_t cloud1_num_particles = 150000;
+
   nbody::model::random_particle_cloud<float> cloud0_sampler{
     {0.0f, 100.0f, 0.0f}, // position
     {10.0f, 15.0f, 11.0f}, // stddev position
-    1.0f, // particle mass
-    0.1f, // stddev particle mass
+    1.0f*100000.f/static_cast<scalar>(cloud0_num_particles), // particle mass
+    0.1f*100000.f/static_cast<scalar>(cloud0_num_particles), // stddev particle mass
     {0.0f, -26.0f, 5.0f}, // velocity
     {5.0f, 20.0f, 12.f} // stddev velocity
   };
@@ -68,14 +71,14 @@ void create_model(std::vector<particle_type>& particles)
   nbody::model::random_particle_cloud<float> cloud1_sampler{
     {50.0f, 5.0f, 0.0f}, // position
     {17.0f, 7.0f, 5.0f}, // stddev position
-    1.3f, // particle mass
-    0.2f, // stddev particle mass
+    1.3f*150000.f/static_cast<scalar>(cloud1_num_particles), // particle mass
+    0.2f*150000.f/static_cast<scalar>(cloud1_num_particles), // stddev particle mass
     {-5.f, 20.0f, 1.0f}, // velocity
     {18.0f, 11.f, 8.f} // stddev velocity
   };
 
-  cloud0_sampler.sample(100000, cloud0);
-  cloud1_sampler.sample(150000, cloud1);
+  cloud0_sampler.sample(cloud0_num_particles, cloud0);
+  cloud1_sampler.sample(cloud1_num_particles, cloud1);
   // Concatenate data
   particles.clear();
   for(const auto& p : cloud0)
