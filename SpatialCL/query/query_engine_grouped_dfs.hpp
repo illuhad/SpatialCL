@@ -335,7 +335,9 @@ private:
         for(ulong num_covered_particles = 0;
             num_covered_particles < num_particles;)
         {
-          if(group_start_node.level == effective_num_levels-1)
+          //if(get_global_id(0)==0)
+          //  printf("level %d covered %d\n", group_start_node.level, (int)num_covered_particles);
+          if (group_start_node.level == effective_num_levels - 1)
           {
             QUERY_PARTICLE_LEVEL(particles,
                                  effective_num_particles,

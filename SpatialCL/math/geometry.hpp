@@ -47,8 +47,8 @@ QCL_STANDALONE_SOURCE
                          vector_type box_min,
                          vector_type box_max)
     {
-      vector_type delta = fmin(fabs(point - box_min),
-                               fabs(point - box_max));
+      vector_type zero = (vector_type)0.0f;
+      vector_type delta = fmax(box_min - point, fmax(zero, point - box_max));
       return VECTOR_NORM2(delta);
     }
 

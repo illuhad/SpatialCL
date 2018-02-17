@@ -137,16 +137,11 @@ public:
           if(particle_idx != get_query_id())
             acceleration += contribution;
 
-          // For the relaxed dfs engine, we need to avoid remaining
+          // For the relaxed and grouped dfs engine, we need to avoid remaining
           // at the lowest node indefinitely. We ensure this by
-          // deselecting a particle if it is a right child, which
-          // forces the query engine to go one level up and check
-          // if the node there should be selected (i.e. if it can be approximated).
-          // For the strict query engine, this makes no difference.
-          //
-          // For a right child, the index & 1 always evaluates to true,
-          // because every odd index belongs to a right child.
-          *selection_result_ptr = !(particle_idx & 1);
+          // deselecting particles. This causes the query engine to go
+          // up again if we are at a right node.
+          *selection_result_ptr = 0;
         }
     )
   R"(
@@ -309,9 +304,10 @@ public:
     // -- Define queries
     using query_handler = nbody_query_handler<Scalar>;
     using query_engine =
-      spatialcl::query::relaxed_dfs_query_engine<
+      spatialcl::query::grouped_dfs_query_engine<
         nbody_type_descriptor<Scalar>,
-        query_handler
+        query_handler,
+        32
       >;
 
     query_engine engine;

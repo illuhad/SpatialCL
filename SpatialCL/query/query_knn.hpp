@@ -128,8 +128,9 @@ private:
                                 bbox_min_corner,
                                 bbox_max_corner);
         }
+        
         *selection_result_ptr =
-                       dist2 < candidate_distances2[max_distance_idx];
+            dist2 < candidate_distances2[max_distance_idx];
       }
 
     )
