@@ -174,6 +174,10 @@ private:
           }
           else
           {
+            dfs_unique_node_discard_event(node_idx,
+                                          current_bbox_min_corner,
+                                          current_bbox_max_corner);
+
             num_covered_particles += BT_LEAVES_PER_NODE(current_node.level,
                                                         effective_num_levels);
 

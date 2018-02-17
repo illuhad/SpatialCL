@@ -120,6 +120,11 @@ private:
       }
     )
     QCL_PREPROCESSOR(define,
+      dfs_unique_node_discard_event(node_idx,
+                                    current_bbox_min_corner,
+                                    current_bbox_max_corner)
+    )
+    QCL_PREPROCESSOR(define,
       bfs_node_selector(max_selectable_nodes,
                         num_available_nodes)
       {
@@ -166,24 +171,24 @@ private:
         ulong num_queries
     )"
     QCL_PREPROCESSOR(define,
-      declare_resumable_query_parameter_set()
-    )
-    QCL_PREPROCESSOR(define,
       at_query_init()
-        vector_type query_range_min = query_ranges_min[get_query_id()];
-        vector_type query_range_max = query_ranges_max[get_query_id()];
+        vector_type query_range_min;
+        vector_type query_range_max;
         uint num_selected_particles = 0;
-        num_retrieved_particles[get_query_id()] = 0;
-    )
-    QCL_PREPROCESSOR(define,
-      at_query_resume()
-    )
-    QCL_PREPROCESSOR(define,
-      at_query_pause()
+
+        if(get_query_id() < num_queries)
+        {
+          query_range_min = query_ranges_min[get_query_id()];
+          query_range_max = query_ranges_max[get_query_id()];
+          num_retrieved_particles[get_query_id()] = 0;
+        }
     )
     QCL_PREPROCESSOR(define,
       at_query_exit()
-        num_retrieved_particles[get_query_id()] = num_selected_particles;
+        if(get_query_id() < num_queries)
+        {
+          num_retrieved_particles[get_query_id()] = num_selected_particles;
+        }
     )
     QCL_PREPROCESSOR(define,
       get_num_queries()

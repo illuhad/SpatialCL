@@ -31,6 +31,7 @@
 
 #include "query/query_engine_dfs.hpp"
 #include "query/query_engine_bfs.hpp"
+#include "query/query_engine_grouped_dfs.hpp"
 
 #include "query/query_knn.hpp"
 #include "query/query_range.hpp"
@@ -53,6 +54,16 @@ using relaxed_dfs_query_engine = query::engine::depth_first
     Handler,
     engine::HIERARCHICAL_ITERATION_RELAXED
   >;
+
+template<class Type_descriptor, class Handler, std::size_t Group_size = 64>
+using grouped_dfs_query_engine = query::engine::grouped_depth_first
+  <
+    Type_descriptor,
+    Handler,
+    Group_size
+  >;
+
+
 
 /************** Range Queries ***************************/
 
@@ -78,6 +89,16 @@ using register_bfs_range_query_engine =
     Type_descriptor,
     box_range_query<Type_descriptor, Max_retrieved_particles>,
     Max_retrieved_particles
+  >;
+
+template<class Type_descriptor, 
+         std::size_t Max_retrieved_particles,
+         std::size_t Group_size = 64>
+using grouped_dfs_range_query_engine = grouped_dfs_query_engine
+  <
+    Type_descriptor,
+    box_range_query<Type_descriptor, Max_retrieved_particles>,
+    Group_size
   >;
 
 template<class Type_descriptor, std::size_t Max_retrieved_particles>
@@ -111,6 +132,16 @@ using register_bfs_knn_query_engine =
     Type_descriptor,
     knn_query<Type_descriptor, K>,
     K
+  >;
+
+template<class Type_descriptor, 
+         std::size_t K,
+         std::size_t Group_size = 64>
+using grouped_dfs_knn_query_engine = grouped_dfs_query_engine
+  <
+    Type_descriptor,
+    knn_query<Type_descriptor, K>,
+    Group_size
   >;
 
 template<class Type_descriptor, std::size_t K>

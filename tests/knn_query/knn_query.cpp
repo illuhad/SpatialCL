@@ -29,6 +29,8 @@
 #include <iostream>
 #include <vector>
 
+#include <boost/preprocessor/stringize.hpp>
+
 #include <SpatialCL/tree.hpp>
 #include <SpatialCL/query.hpp>
 
@@ -52,6 +54,19 @@ constexpr std::size_t K = 8;
 using particle_type = spatialcl::configuration<type_system>::particle_type;
 using vector_type = spatialcl::configuration<type_system>::vector_type;
 constexpr std::size_t dimension = type_system::dimension;
+
+using strict_dfs_knn_engine =
+  spatialcl::query::strict_dfs_knn_query_engine<type_system, K>;
+
+using relaxed_dfs_knn_engine =
+  spatialcl::query::relaxed_dfs_knn_query_engine<type_system, K>;
+
+using register_bfs_knn_engine =
+  spatialcl::query::register_bfs_knn_query_engine<type_system, K>;
+
+template <std::size_t Group_size>
+using grouped_dfs_knn_engine =
+  spatialcl::query::grouped_dfs_knn_query_engine<type_system, K, Group_size>;
 
 template<class Query_engine>
 std::size_t execute_knn_query_test(const qcl::device_context_ptr& ctx,
@@ -110,47 +125,23 @@ int main(int argc, char* argv[])
 
   std::size_t num_errors = 0;
 
-  using strict_dfs_knn_engine =
-    spatialcl::query::strict_dfs_knn_query_engine<type_system, K>;
+  #define RUN_TEST(test_name) \
+  num_errors = \
+      execute_knn_query_test<test_name>(ctx,          \
+                                        gpu_tree,     \
+                                        query_points, \
+                                        queries,      \
+                                        particles,    \
+                                        result);      \
+  std::cout << BOOST_PP_STRINGIZE(test_name) <<" completed queries with " \
+            << num_errors << " errors." << std::endl
 
-  using relaxed_dfs_knn_engine =
-    spatialcl::query::relaxed_dfs_knn_query_engine<type_system, K>;
-
-  using register_bfs_knn_engine =
-    spatialcl::query::register_bfs_knn_query_engine<type_system, K>;
-
-  num_errors =
-      execute_knn_query_test<strict_dfs_knn_engine>(ctx,
-                                                    gpu_tree,
-                                                    query_points,
-                                                    queries,
-                                                    particles,
-                                                    result);
-
-  std::cout << "strict_dfs_knn_query_engine completed queries with "
-            << num_errors << " errors." << std::endl;
-
-  num_errors =
-      execute_knn_query_test<relaxed_dfs_knn_engine>(ctx,
-                                                     gpu_tree,
-                                                     query_points,
-                                                     queries,
-                                                     particles,
-                                                     result);
-
-  std::cout << "relaxed_dfs_knn_query_engine completed queries with "
-            << num_errors << " errors." << std::endl;
-
-  num_errors =
-      execute_knn_query_test<register_bfs_knn_engine>(ctx,
-                                                      gpu_tree,
-                                                      query_points,
-                                                      queries,
-                                                      particles,
-                                                      result);
-
-  std::cout << "register_bfs_knn_query_engine completed queries with "
-            << num_errors << " errors." << std::endl;
+  RUN_TEST(strict_dfs_knn_engine);
+  RUN_TEST(relaxed_dfs_knn_engine);
+  RUN_TEST(grouped_dfs_knn_engine<16>);
+  RUN_TEST(grouped_dfs_knn_engine<32>);
+  RUN_TEST(grouped_dfs_knn_engine<64>);
+  RUN_TEST(register_bfs_knn_engine);
 
   return 0;
 }

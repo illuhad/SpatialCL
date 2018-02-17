@@ -36,7 +36,7 @@
 
 namespace cl_utils {
 
-#define NODEBUG
+//#define NODEBUG
 
 #ifdef NODEBUG
  const int CL_NODEBUG = 1;

@@ -120,7 +120,7 @@ private:
   (
     QCL_INCLUDE_MODULE(bit_manipulation)
     R"(
-      #define BT_EFFECTIVE_NUM_LEAVES(num_particles) get_next_power_of_two(num_particles)
+      #define BT_EFFECTIVE_NUM_LEAVES(num_leaves) get_next_power_of_two(num_leaves)
       #define BT_LEVEL_OFFSET_MASK(num_levels) n_bits_set(num_levels)
       #define BT_LEVEL_OFFSET(level, num_levels) (~n_bits_set(level+1) & BT_LEVEL_OFFSET_MASK(num_levels))
       #define BT_LEAVES_PER_NODE(level, num_levels) (1ul << (num_levels - level - 1))
@@ -224,6 +224,15 @@ private:
       {
         return ctx->local_node_id & 1;
       }
+
+      index_type binary_tree_get_num_populated_nodes(uint level,
+                                                     uint num_levels,
+                                                     uint num_leaves)
+      {
+        index_type leaves_per_node = BT_LEAVES_PER_NODE(level, num_levels);
+        return (num_leaves + leaves_per_node - 1) / leaves_per_node;
+      }
+    
     )
   )
 };

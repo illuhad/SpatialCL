@@ -28,6 +28,8 @@
 
 #include <iostream>
 
+#include <boost/preprocessor/stringize.hpp>
+
 #include <SpatialCL/tree.hpp>
 #include <SpatialCL/query.hpp>
 
@@ -42,6 +44,7 @@ constexpr std::size_t particle_dimension = 3;
 
 const std::size_t num_particles = 32000;
 const std::size_t num_queries = 2000;
+
 constexpr std::size_t max_retrieved_particles = 8;
 
 using tree_type = spatialcl::hilbert_bvh_sp3d_tree<particle_dimension>;
@@ -49,6 +52,25 @@ using type_system = tree_type::type_system;
 using scalar = type_system::scalar;
 
 constexpr scalar query_diameter = 0.05f;
+
+// Define queries
+using strict_dfs_range_engine =
+  spatialcl::query::strict_dfs_range_query_engine<type_system,
+                                                  max_retrieved_particles>;
+
+using relaxed_dfs_range_engine =
+  spatialcl::query::relaxed_dfs_range_query_engine<type_system,
+                                                  max_retrieved_particles>;
+
+template<std::size_t Group_size>
+using grouped_dfs_range_engine =
+  spatialcl::query::grouped_dfs_range_query_engine<type_system,
+                                                    max_retrieved_particles,
+                                                    Group_size>;
+
+using register_bfs_range_engine =
+  spatialcl::query::register_bfs_range_query_engine<type_system,
+                                                    max_retrieved_particles>;
 
 
 using particle_type = spatialcl::configuration<type_system>::particle_type;
@@ -143,63 +165,29 @@ int main()
   qcl::device_array<cl_uint> result_num_retrieved_particles{ctx,
                                                             num_queries};
 
-  // Define query
-  using strict_dfs_range_engine =
-    spatialcl::query::strict_dfs_range_query_engine<type_system,
-                                                    max_retrieved_particles>;
-
-  using relaxed_dfs_range_engine =
-    spatialcl::query::relaxed_dfs_range_query_engine<type_system,
-                                                    max_retrieved_particles>;
-
-  using register_bfs_range_engine =
-    spatialcl::query::register_bfs_range_query_engine<type_system,
-                                                      max_retrieved_particles>;
-
 
   std::size_t num_errors = 0;
 
-  num_errors =
-      execute_range_query_test<strict_dfs_range_engine>(ctx,
-                                                        gpu_tree,
-                                                        host_ranges_min,
-                                                        host_ranges_max,
-                                                        ranges_min,
-                                                        ranges_max,
-                                                        particles,
-                                                        result_particles,
-                                                        result_num_retrieved_particles);
+#define RUN_TEST(test_name) \
+  num_errors = \
+      execute_range_query_test<test_name>(ctx,              \
+                                          gpu_tree,         \
+                                          host_ranges_min,  \
+                                          host_ranges_max,  \
+                                          ranges_min,       \
+                                          ranges_max,       \
+                                          particles,        \
+                                          result_particles, \
+                                          result_num_retrieved_particles); \
+  std::cout << BOOST_PP_STRINGIZE(test_name) <<" completed queries with " \
+            << num_errors << " errors." << std::endl
 
-  std::cout << "strict_dfs_range_query_engine completed queries with "
-            << num_errors << " errors." << std::endl;
-
-  num_errors =
-      execute_range_query_test<relaxed_dfs_range_engine>(ctx,
-                                                        gpu_tree,
-                                                        host_ranges_min,
-                                                        host_ranges_max,
-                                                        ranges_min,
-                                                        ranges_max,
-                                                        particles,
-                                                        result_particles,
-                                                        result_num_retrieved_particles);
-
-  std::cout << "relaxed_dfs_range_query_engine completed queries with "
-            << num_errors << " errors." << std::endl;
-
-  num_errors =
-      execute_range_query_test<register_bfs_range_engine>(ctx,
-                                                        gpu_tree,
-                                                        host_ranges_min,
-                                                        host_ranges_max,
-                                                        ranges_min,
-                                                        ranges_max,
-                                                        particles,
-                                                        result_particles,
-                                                        result_num_retrieved_particles);
-
-  std::cout << "register_bfs_range_query_engine completed queries with "
-            << num_errors << " errors." << std::endl;
-
+  RUN_TEST(strict_dfs_range_engine);
+  RUN_TEST(relaxed_dfs_range_engine);
+  RUN_TEST(grouped_dfs_range_engine<16>);
+  RUN_TEST(grouped_dfs_range_engine<32>);
+  RUN_TEST(grouped_dfs_range_engine<64>);
+  RUN_TEST(register_bfs_range_engine);
+ 
   return 0;
 }

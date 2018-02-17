@@ -105,13 +105,19 @@ public:
           vector_type delta = bbox_min_corner - evaluation_position;
           scalar r2 = VECTOR_NORM2(delta);
           *selection_result_ptr = (node_width*node_width/r2 > opening_angle_squared);
+        }
+      )
+    QCL_PREPROCESSOR(define,
+        dfs_unique_node_discard_event(node_idx,
+                                      bbox_min_corner,
+                                      bbox_max_corner)
+        {
+          // Evaluate monopole
+          vector_type delta = bbox_min_corner - evaluation_position;
+          scalar r2 = VECTOR_NORM2(delta);
 
-          if(!(*selection_result_ptr))
-          {
-            // Evaluate monopole
-            acceleration.s012 +=
+          acceleration.s012 +=
               bbox_min_corner.w * normalize(delta.s012) / (r2+gravitational_softening_squared);
-          }
         }
     )
     QCL_PREPROCESSOR(define,
@@ -152,13 +158,15 @@ public:
   )"
   QCL_PREPROCESSOR(define,
     at_query_init()
-      vector_type evaluation_position =
-          PARTICLE_POSITION(evaluated_particles[get_query_id()]);
+      vector_type evaluation_position;
+      if(get_query_id() < num_evaluated_particles)
+        evaluation_position = PARTICLE_POSITION(evaluated_particles[get_query_id()]);
       vector_type acceleration = (vector_type)0.0f;
   )
   QCL_PREPROCESSOR(define,
     at_query_exit()
-      accelerations[get_query_id()] = acceleration;
+      if(get_query_id() < num_evaluated_particles)
+        accelerations[get_query_id()] = acceleration;
   )
   QCL_PREPROCESSOR(define,
     get_num_queries()

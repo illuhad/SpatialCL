@@ -91,8 +91,8 @@ private:
       *max_distance_idx = 0;
       // Find new max distance index
       for(int i = 0; i < K; ++i)
-        if(candidate_distances2[i] >
-          candidate_distances2[*max_distance_idx])
+        if(candidate_distances2[i] >=
+           candidate_distances2[*max_distance_idx])
           *max_distance_idx = i;
     }
 
@@ -123,10 +123,11 @@ private:
         if(!box_contains_particle(bbox_min_corner,
                                   bbox_max_corner,
                                   query_position))
-           box_distance2(query_position,
-                         bbox_min_corner,
-                         bbox_max_corner);
-
+        {
+          dist2 = box_distance2(query_position,
+                                bbox_min_corner,
+                                bbox_max_corner);
+        }
         *selection_result_ptr =
                        dist2 < candidate_distances2[max_distance_idx];
       }
@@ -234,15 +235,17 @@ private:
         }
       }
     )
+    QCL_PREPROCESSOR(define,
+      dfs_unique_node_discard_event(node_idx,
+                                    current_bbox_min_corner,
+                                    current_bbox_max_corner)
+    )
     R"(
       #define declare_full_query_parameter_set() \
          __global vector_type* query_positions, \
          __global particle_type* query_result, \
          ulong num_queries
     )"
-    QCL_PREPROCESSOR(define,
-      declare_resumable_query_parameter_set()
-    )
     QCL_PREPROCESSOR(define,
       at_query_init()
 
@@ -254,19 +257,17 @@ private:
 
         uint max_distance_idx = 0;
 
-        vector_type query_position =
-            query_positions[get_query_id()];
-    )
-    QCL_PREPROCESSOR(define,
-      at_query_resume()
-    )
-    QCL_PREPROCESSOR(define,
-      at_query_pause()
+        vector_type query_position;
+        if(get_query_id() < num_queries)
+          query_position = query_positions[get_query_id()];
     )
     QCL_PREPROCESSOR(define,
       at_query_exit()
-        for(int i = 0; i < K; ++i)
-          query_result[get_query_id()*K + i] = candidates[i];
+        if(get_query_id() < num_queries)
+        {
+          for(int i = 0; i < K; ++i)
+            query_result[get_query_id()*K + i] = candidates[i];
+        }
     )
     QCL_PREPROCESSOR(define,
       get_num_queries()
