@@ -55,6 +55,7 @@ QCL_STANDALONE_SOURCE
     // Calculates maximum distance squared to a box,
     // i.e. the distance from the point to the farthest
     // point on the box surface
+    // TODO: This is wrong, fix this
     scalar box_farthest_distance2(vector_type point,
                                   vector_type box_min,
                                   vector_type box_max)

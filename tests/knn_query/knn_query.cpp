@@ -37,9 +37,9 @@
 #include <QCL/qcl.hpp>
 #include <QCL/qcl_array.hpp>
 
-#include "../common/environment.hpp"
-#include "../common/random_vectors.hpp"
-#include "../common/verification_knn.hpp"
+#include "../../common/environment.hpp"
+#include "../../common/random_vectors.hpp"
+#include "../../common/verification_knn.hpp"
 
 constexpr std::size_t particle_dimension = 3;
 

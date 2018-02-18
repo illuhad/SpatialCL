@@ -2,7 +2,7 @@
  * This file is part of SpatialCL, a library for the spatial processing of
  * particles.
  *
- * Copyright (c) 2017, 2018 Aksel Alpay
+ * Copyright (c) 2018 Aksel Alpay
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,7 +26,9 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <vector>
 #include <iostream>
+#include <string>
 
 #include <boost/preprocessor/stringize.hpp>
 
@@ -38,20 +40,20 @@
 
 #include "../../common/environment.hpp"
 #include "../../common/random_vectors.hpp"
-#include "../../common/verification_range.hpp"
+#include "../../common/timer.hpp"
+
 
 constexpr std::size_t particle_dimension = 3;
 
-const std::size_t num_particles = 32000;
-const std::size_t num_queries = 2000;
+const std::size_t num_particles = 250000;
+const std::size_t num_query_groups_xy = 128;
+const std::size_t query_group_size_xy = 8;
 
 constexpr std::size_t max_retrieved_particles = 8;
 
 using tree_type = spatialcl::hilbert_bvh_sp3d_tree<particle_dimension>;
 using type_system = tree_type::type_system;
 using scalar = type_system::scalar;
-
-constexpr scalar query_diameter = 0.05f;
 
 // Define queries
 using strict_dfs_range_engine =
@@ -78,15 +80,13 @@ using vector_type = spatialcl::configuration<type_system>::vector_type;
 constexpr std::size_t dimension = type_system::dimension;
 
 template<class Query_engine>
-std::size_t execute_range_query_test(const qcl::device_context_ptr& ctx,
-                                     const tree_type& tree,
-                                     const std::vector<vector_type>& host_queries_min,
-                                     const std::vector<vector_type>& host_queries_max,
-                                     const qcl::device_array<vector_type>& queries_min,
-                                     const qcl::device_array<vector_type>& queries_max,
-                                     const std::vector<particle_type>& particles,
-                                     qcl::device_array<particle_type>& result,
-                                     qcl::device_array<cl_uint>& num_results)
+void run_benchmark(const std::string& name,
+                   const qcl::device_context_ptr& ctx,
+                   const tree_type& tree,
+                   const qcl::device_array<vector_type>& queries_min,
+                   const qcl::device_array<vector_type>& queries_max,
+                   qcl::device_array<particle_type>& result,
+                   qcl::device_array<cl_uint>& num_results)
 {
   Query_engine query_engine;
 
@@ -98,96 +98,106 @@ std::size_t execute_range_query_test(const qcl::device_context_ptr& ctx,
     queries_min.size()
   };
 
-  std::cout << "Executing query..." << std::endl;
-
+  common::timer t;
+  t.start();
   tree.execute_query(query_engine, query_handler);
 
   cl_int err = ctx->get_command_queue().finish();
   qcl::check_cl_error(err, "Error while executing range query");
+  double time = t.stop();
 
-  // Retrieve results
-  std::vector<particle_type> host_results;
-  std::vector<cl_uint> host_num_results;
-  result.read(host_results);
-  num_results.read(host_num_results);
+  std::size_t total_num_retrieved_particles = 0;
+  std::vector<cl_uint> host_num_particles;
+  num_results.read(host_num_particles);
 
-  std::cout << "Verifying results, please wait..." << std::endl;
-  // Verify results
-  common::verification::naive_cpu_range_verifier<type_system> verifier{
-    host_queries_min,
-    host_queries_max,
-    max_retrieved_particles
-  };
+  for(const cl_uint n: host_num_particles) 
+    total_num_retrieved_particles += n;
+  
 
-  return verifier(particles, host_results, host_num_results);
+  std::cout << "Benchmark " << name << " completed in "
+            << time << "s => " << queries_min.size() / time << " Queries/s"
+            << " (retrieved: " << total_num_retrieved_particles << " particles)" << std::endl;
 }
 
 int main()
 {
-  // Setup particle tree
   common::environment env;
   qcl::device_context_ptr ctx = env.get_device_context();
+
+  // Setup tree
 
   std::vector<particle_type> particles;
   common::random_vectors<scalar, particle_dimension> rnd;
   rnd(num_particles, particles);
-
+  
   tree_type gpu_tree{ctx, particles};
 
-  // Create random ranges for the queries
-  std::vector<vector_type> query_points;
-  rnd(num_queries, query_points);
+  // Create queries
+  std::size_t total_num_queries = 
+    num_query_groups_xy * num_query_groups_xy * query_group_size_xy * query_group_size_xy;
 
-  std::vector<vector_type> host_ranges_min = query_points;
-  std::vector<vector_type> host_ranges_max = query_points;
+  std::vector<vector_type> query_ranges_min;
+  std::vector<vector_type> query_ranges_max;
 
-  std::transform(host_ranges_min.begin(), host_ranges_min.end(),
-                 host_ranges_min.begin(),
-                 [&](vector_type current){
-    for(std::size_t i = 0; i < dimension; ++i)
-      current.s[i] -= query_diameter / 2;
-    return current;
-  });
+  double query_stepsize = 1.0 / static_cast<double>(num_query_groups_xy * query_group_size_xy);
+  scalar query_diameter =  static_cast<scalar>(3.0 * query_stepsize);
 
-  std::transform(host_ranges_max.begin(), host_ranges_max.end(),
-                 host_ranges_max.begin(),
-                 [&](vector_type current){
-    for(std::size_t i = 0; i < dimension; ++i)
-      current.s[i] += query_diameter / 2;
-    return current;
-  });
+  for (std::size_t x = 0; x < num_query_groups_xy; ++x)
+  {
+    for (std::size_t y = 0; y < num_query_groups_xy; ++y)
+    {
+      for (std::size_t tile_x = 0; tile_x < query_group_size_xy; ++tile_x)
+      {
+        for (std::size_t tile_y = 0; tile_y < query_group_size_xy; ++tile_y)
+        {
+          std::size_t query_id_x = x * query_group_size_xy + tile_x;
+          std::size_t query_id_y = y * query_group_size_xy + tile_y;
 
-  // Create buffers on the compute device
-  qcl::device_array<vector_type> ranges_min{ctx, host_ranges_min};
-  qcl::device_array<vector_type> ranges_max{ctx, host_ranges_max};
+          scalar x_position = static_cast<scalar>(query_id_x * query_stepsize);
+          scalar y_position = static_cast<scalar>(query_id_y * query_stepsize);
+
+          vector_type query_min, query_max;
+
+          query_min.s[0] = x_position;
+          query_min.s[1] = y_position;
+          query_min.s[2] = 0.0f;
+
+          query_max.s[0] = x_position + query_diameter;
+          query_max.s[1] = y_position + query_diameter;
+          query_max.s[2] = query_diameter;
+
+          query_ranges_min.push_back(query_min);
+          query_ranges_max.push_back(query_max);
+          
+        }
+      }
+    }
+  }
+
+  qcl::device_array<vector_type> device_ranges_min{ctx, query_ranges_min};
+  qcl::device_array<vector_type> device_ranges_max{ctx, query_ranges_max};
   qcl::device_array<particle_type> result_particles{ctx,
-                                    num_queries*max_retrieved_particles};
+                                                  total_num_queries*max_retrieved_particles};
   qcl::device_array<cl_uint> result_num_retrieved_particles{ctx,
-                                                            num_queries};
+                                                            total_num_queries};
 
+#define RUN_BENCHMARK(engine) \
+  run_benchmark<engine>(BOOST_PP_STRINGIZE(engine), \
+                        ctx, \
+                        gpu_tree, \
+                        device_ranges_min, \
+                        device_ranges_max, \
+                        result_particles, \
+                        result_num_retrieved_particles)
 
-  std::size_t num_errors = 0;
+  RUN_BENCHMARK(strict_dfs_range_engine);
+  RUN_BENCHMARK(relaxed_dfs_range_engine);
+  RUN_BENCHMARK(grouped_dfs_range_engine<16>);
+  RUN_BENCHMARK(grouped_dfs_range_engine<32>);
+  RUN_BENCHMARK(grouped_dfs_range_engine<64>);
+  RUN_BENCHMARK(grouped_dfs_range_engine<128>);
+  RUN_BENCHMARK(grouped_dfs_range_engine<256>);
+  RUN_BENCHMARK(register_bfs_range_engine);
 
-#define RUN_TEST(test_name) \
-  num_errors = \
-      execute_range_query_test<test_name>(ctx,              \
-                                          gpu_tree,         \
-                                          host_ranges_min,  \
-                                          host_ranges_max,  \
-                                          ranges_min,       \
-                                          ranges_max,       \
-                                          particles,        \
-                                          result_particles, \
-                                          result_num_retrieved_particles); \
-  std::cout << BOOST_PP_STRINGIZE(test_name) <<" completed queries with " \
-            << num_errors << " errors." << std::endl
-
-  RUN_TEST(strict_dfs_range_engine);
-  RUN_TEST(relaxed_dfs_range_engine);
-  RUN_TEST(grouped_dfs_range_engine<16>);
-  RUN_TEST(grouped_dfs_range_engine<32>);
-  RUN_TEST(grouped_dfs_range_engine<64>);
-  RUN_TEST(register_bfs_range_engine);
- 
   return 0;
 }

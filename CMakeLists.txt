@@ -30,7 +30,7 @@ find_package(Boost
 
 
 include_directories(${PROJECT_BINARY_DIR} ${PROJECT_SOURCE_DIR}  ${OpenCL_INCLUDE_DIRS})
-subdirs(tests examples)
+subdirs(tests examples benchmarks)
 
 
 

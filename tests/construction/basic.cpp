@@ -31,8 +31,8 @@
 
 
 #include <SpatialCL/tree.hpp>
-#include "../common/environment.hpp"
-#include "../common/random_vectors.hpp"
+#include "../../common/environment.hpp"
+#include "../../common/random_vectors.hpp"
 
 void print_vector(const std::vector<cl_float4>& data, std::size_t begin, std::size_t size)
 {
