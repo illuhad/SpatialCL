@@ -39,6 +39,8 @@
 #include "nbody.hpp"
 #include "particle_renderer.hpp"
 
+#include "../../common/timer.hpp"
+
 using scalar = float;
 using particle_type =
   typename nbody::nbody_simulation<scalar>::particle_type;
@@ -142,6 +144,8 @@ int main()
     // Create model: two random particle clouds
     std::vector<particle_type> particles;
     create_model(particles);
+    std::size_t total_num_particles = particles.size();
+    std::size_t num_interactions = total_num_particles * total_num_particles;
 
     // Copy particles to the GPU
     qcl::device_array<particle_type> device_particles{ctx, particles};
@@ -149,13 +153,21 @@ int main()
     nbody::nbody_simulation<scalar> simulation{ctx, device_particles};
     nbody::particle_renderer<scalar> renderer{ctx, 512, 512};
 
+    common::timer t;
+
     std::size_t step_id = 0;
     for(;simulation.get_current_time() < final_time;
         ++step_id)
     {
       std::cout << "t = " << simulation.get_current_time() << std::endl;
       std::cout << "  Time step..." << std::endl;
+
+      t.start();
       simulation.time_step(opening_angle, dt);
+      ctx->get_command_queue().finish();
+      double time = t.stop();
+      std::cout << "  Current performance: " << num_interactions / time * 1.e-9
+                << " Ginteractions/s" << std::endl;
 
       std::cout << "  Rendering particles..." << std::endl;
       renderer.render(device_particles,

@@ -43,6 +43,7 @@
 
 #include "nbody_tree.hpp"
 
+
 namespace nbody {
 
 template<class Scalar>
@@ -104,7 +105,7 @@ public:
           scalar node_width = bbox_max_corner.w;
           vector_type delta = bbox_min_corner - evaluation_position;
           scalar r2 = VECTOR_NORM2(delta);
-          *selection_result_ptr = (node_width*node_width/r2 > opening_angle_squared);
+          *selection_result_ptr = (node_width*node_width > r2*opening_angle_squared);
         }
       )
     QCL_PREPROCESSOR(define,
@@ -117,7 +118,7 @@ public:
           scalar r2 = VECTOR_NORM2(delta);
 
           acceleration.s012 +=
-              bbox_min_corner.w * normalize(delta.s012) / (r2+gravitational_softening_squared);
+              native_divide(bbox_min_corner.w * fast_normalize(delta.s012), r2+gravitational_softening_squared);
         }
     )
     QCL_PREPROCESSOR(define,

@@ -44,6 +44,8 @@ namespace engine {
 template<class Type_descriptor,
          class Handler_module,
          std::size_t group_size = 64,
+         std::size_t node_batch_load_size = 2,
+         std::size_t particle_batch_load_size = 4,
          std::size_t group_coherence_size = 32>
 class grouped_depth_first
 {
@@ -51,7 +53,18 @@ public:
   QCL_MAKE_MODULE(grouped_depth_first)
 
   static_assert(group_size % 2 == 0, "The group size must be even.");
+  static_assert(node_batch_load_size <= group_size, "The number of batch loaded nodes must be "
+                                                    "<= the work group size");
+  static_assert(node_batch_load_size % 2 == 0, "The number of batch loaded nodes must be even");
+  static_assert(particle_batch_load_size % 2 == 0, "The number of batch loaded particles must be even");
+  static_assert(particle_batch_load_size % node_batch_load_size == 0,
+                "The number of batch loaded particles must be a multiple of the number of "
+                "batch loaded nodes");
 
+  static_assert(particle_batch_load_size <= group_size && 
+                node_batch_load_size <= group_size,
+                "The number of batch loaded particles and nodes cannot be larger than"
+                " the work group size");
   using handler_type = Handler_module;
   using particle_type = 
       typename configuration<Type_descriptor>::particle_type;
@@ -77,8 +90,8 @@ public:
                                   evt);
 
     std::size_t local_mem_size = 
-          group_size * (sizeof(cl_int) 
-                     + std::max(sizeof(particle_type), 2*sizeof(vector_type)));
+          std::max(particle_batch_load_size * sizeof(particle_type), 
+                   node_batch_load_size * 2 * sizeof(vector_type)) + sizeof(cl_int);
 
     call.partial_argument_list(particles,
                                bbox_min_corner,
@@ -100,6 +113,8 @@ private:
     QCL_INCLUDE_MODULE(binary_tree)
     QCL_IMPORT_CONSTANT(group_size)
     QCL_IMPORT_CONSTANT(group_coherence_size)
+    QCL_IMPORT_CONSTANT(node_batch_load_size)
+    QCL_IMPORT_CONSTANT(particle_batch_load_size)
     R"(
       #if group_size <= barrier_coherence_size
        #define fast_barrier(flags)
@@ -114,20 +129,6 @@ private:
       {
         return binary_tree_key_encode_global_id(node,effective_num_levels)
                - effective_num_particles;
-      }
-
-      int work_group_or(__local int* mem, size_t lid)
-      {
-        for(int i = group_size/2; i>0; i >>= 1)
-        {
-          if(lid < i)
-            mem[lid] = mem[lid] | mem[lid + i];
-          fast_barrier(CLK_LOCAL_MEM_FENCE);
-        }
-
-        int result = mem[0];
-        fast_barrier(CLK_LOCAL_MEM_FENCE);
-        return result;
       }
     )
     QCL_PREPROCESSOR(define, get_query_id() tid)
@@ -144,16 +145,16 @@ private:
 
         __local particle_type* particle_cache = cache;
         __local int* some_particles_selected = 
-                   (__local int *)(particle_cache + group_size);
+                   (__local int *)(particle_cache + particle_batch_load_size);
 
         ulong particle_idx_begin = group_start_node.local_node_id;
-        const int num_available_particles = min((int)group_size, 
+        const int num_available_particles = min((int)particle_batch_load_size, 
                                                 (int)(num_particles-num_covered_particles));
         
         // Load particles collectively into the cache
         if(lid < num_available_particles)
           particle_cache[lid] = particles[particle_idx_begin + lid];
-        some_particles_selected[lid] = 0;
+        *some_particles_selected = 0;
 
         fast_barrier(CLK_LOCAL_MEM_FENCE);
 
@@ -175,19 +176,25 @@ private:
           // If the query has decided to select some particle,
           // mark this in the level state
           if(any_particle_selected)
-            some_particles_selected[lid] = 1;
+            *some_particles_selected = 1;
         }
         fast_barrier(CLK_LOCAL_MEM_FENCE);
 
-        // We must continue at the particle level if at least
-        // one query has selected a particle
-        // We also have to remain at the particle level if
-        // we haven't processed an even number of segments
-        int even_num_segments = ~(group_start_node.local_node_id / group_size) & 1;
-        int remain_at_level = work_group_or(some_particles_selected, lid) || even_num_segments;
-
+        // Update the local_node_id - from now on, it contains
+        // the position where the next processed block would start
+        // in case we remain at the particle level.
         group_start_node.local_node_id += num_available_particles;
-        if(!remain_at_level)
+
+        // We can only go up from the particle level, if we have processed 2*node_batch_load_size
+        // particles. This guarantees that, when going up, we do not arrive
+        // at the same parent nodes that we have already processed previously.
+        // This alignment with the parent node happens if the start position of
+        // the next particle group is a multiple of the node_batch_load_size.
+        int aligned_with_parent = (group_start_node.local_node_id % node_batch_load_size == 0);
+        int go_up = !(*some_particles_selected) && aligned_with_parent;
+        fast_barrier(CLK_LOCAL_MEM_FENCE);
+
+        if(go_up)
         {
           // No query/work item was interested in any particles from
           // this region, so the entire work group should move up in the tree
@@ -208,20 +215,20 @@ private:
                        num_covered_particles,
                        cache)
       {
-        const size_t lid = get_local_id(0);
+         const size_t lid = get_local_id(0);
 
         __local vector_type* bbox_min_corner_cache =
                        (__local vector_type*)cache;
         __local vector_type* bbox_max_corner_cache =
-                       bbox_min_corner_cache + group_size;
+                       bbox_min_corner_cache + node_batch_load_size;
         __local int* some_nodes_selected =
-                       (__local int*)(bbox_max_corner_cache + group_size);
+                       (__local int*)(bbox_max_corner_cache + node_batch_load_size);
 
         ulong node_idx_begin = get_node_index(&group_start_node,
                                               effective_num_levels,
                                               effective_num_particles);
         int num_available_nodes = 
-          min((int)(group_size),
+          min((int)(node_batch_load_size),
               (int)(binary_tree_get_num_populated_nodes(group_start_node.level, 
                                                         effective_num_levels, 
                                                         num_particles)
@@ -233,14 +240,14 @@ private:
           bbox_min_corner_cache[lid] = bbox_min_corner[node_idx_begin + lid];
           bbox_max_corner_cache[lid] = bbox_max_corner[node_idx_begin + lid];
         }
-        some_nodes_selected[lid] = 0;
+        *some_nodes_selected = 0;
         fast_barrier(CLK_LOCAL_MEM_FENCE);
 
         // For each query, iterate over the nodes in the
         // cache and check if nodes should be selected.
         if(tid < get_num_queries())
         {
-          int any_node_selected = 0;
+          
           for(int i = 0; i < num_available_nodes; ++i)
           {
             int node_selected = 0;
@@ -253,21 +260,21 @@ private:
                               bbox_min_corner_cache[i],
                               bbox_max_corner_cache[i]);
 
-            any_node_selected |= node_selected;
-          }
 
-          // If the query has decided to select some nodes,
-          // mark this work item as having selected nodes
-          // in the some_nodes_selected local memory area
-          if(any_node_selected)
-            some_nodes_selected[lid] = 1; 
+            // If the query has decided to select some nodes,
+            // mark this work item as having selected nodes
+            // in the some_nodes_selected local memory area
+            if(node_selected)
+              *some_nodes_selected = 1;
+          }  
         }
         fast_barrier(CLK_LOCAL_MEM_FENCE);
 
         // We must investigate deeper levels, if at least
         // one query wants to investigate deeper levels.
         // For this, we need a reduction
-        int go_deeper = work_group_or(some_nodes_selected, lid);
+        int go_deeper = *some_nodes_selected;
+        fast_barrier(CLK_LOCAL_MEM_FENCE);
 
         if(go_deeper)
         {
@@ -298,7 +305,7 @@ private:
           // redundant work is done with respect to the upper level from
           // where we come.
           // In both cases, we first need to increment the local node id
-          int odd_segment = (group_start_node.local_node_id / group_size) & 1;
+          int odd_segment = (group_start_node.local_node_id / node_batch_load_size) & 1;
 
           group_start_node.local_node_id += num_available_nodes;
           if(odd_segment)
@@ -335,8 +342,6 @@ private:
         for(ulong num_covered_particles = 0;
             num_covered_particles < num_particles;)
         {
-          //if(get_global_id(0)==0)
-          //  printf("level %d covered %d\n", group_start_node.level, (int)num_covered_particles);
           if (group_start_node.level == effective_num_levels - 1)
           {
             QUERY_PARTICLE_LEVEL(particles,

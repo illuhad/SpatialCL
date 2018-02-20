@@ -44,8 +44,9 @@
 
 
 constexpr std::size_t particle_dimension = 3;
+constexpr std::size_t num_runs = 10;
 
-const std::size_t num_particles = 250000;
+const std::size_t num_particles = 700000;
 const std::size_t num_query_groups_xy = 128;
 const std::size_t query_group_size_xy = 8;
 
@@ -99,11 +100,21 @@ void run_benchmark(const std::string& name,
   };
 
   common::timer t;
-  t.start();
+  // Execute the query once before measuring to make sure
+  // we do not take into account kernel compilation times.
   tree.execute_query(query_engine, query_handler);
 
   cl_int err = ctx->get_command_queue().finish();
   qcl::check_cl_error(err, "Error while executing range query");
+
+  t.start();
+  for (std::size_t run = 0; run < num_runs; ++run)
+  {
+    tree.execute_query(query_engine, query_handler);
+
+    err = ctx->get_command_queue().finish();
+    qcl::check_cl_error(err, "Error while executing range query");
+  }
   double time = t.stop();
 
   std::size_t total_num_retrieved_particles = 0;
@@ -115,7 +126,7 @@ void run_benchmark(const std::string& name,
   
 
   std::cout << "Benchmark " << name << " completed in "
-            << time << "s => " << queries_min.size() / time << " Queries/s"
+            << time << "s => " << num_runs * queries_min.size() / time << " Queries/s"
             << " (retrieved: " << total_num_retrieved_particles << " particles)" << std::endl;
 }
 
