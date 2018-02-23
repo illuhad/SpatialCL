@@ -35,45 +35,86 @@
 #include "../configuration.hpp"
 #include "../tree/binary_tree.hpp"
 #include "../cl_utils.hpp"
-
+#include "../binary_utils.hpp"
 
 namespace spatialcl {
 namespace query {
 namespace engine {
 
+/// The grouped depth first query engine is a depth-first query engine
+/// that can be faster than the relaxed and strict depth-first engines
+/// if 
+///    * Adjacent queries in the query array follow a similar path through
+///      the tree
+///    * A lot of time is spent at the particle level.
+/// This is for example the case for ordered range queries over large ranges.
+/// Conceptually, this engine works similar to the \c relaxed_dfs_query_engine,
+/// with the difference that an entire work group moves together to the tree.
+/// This means that performance will degrade greatly if work items of the same
+/// work group want to access very different parts of the tree.
+/// At the node levels, a number of nodes will be loaded collectively into local
+/// memory where they are processed by the entire work group.
+/// Similarly, at the particle level particles are loaded collectively into local memory
+/// where they are processed by the entire work group.
+/// This means that the algorithm locally converges to the optimal brute-force
+/// solution if enough time is spent at the particle level.
+///
+/// This query engine satisfies the DFS query engine interface concept.
+/// \tparam Type_descriptor The type system
+/// \tparam Handler_module The query handler. Must satisfy the DFS concept.
+/// \tparam group_size The work group size
+/// \tparam node_batch_load_size How many consecutive nodes are loaded collectively into
+/// local memory.
+/// \tparam particle_batch_load_size How many consecutive particles are loaded collectively 
+/// into local memory
+/// \tparam group_coherence_size Number of consecutive work items in a work group
+/// that are always synchronized with respect to each other. The algorithm will
+/// remove explicit synchronization (e.g. barrier()) calls if the synchronization
+/// is among that many work items. On nvidia GPUs, this should equal the warp size
+/// (typically 32), on AMD GPUs it should equal the wavefront size (typically 64).
 template<class Type_descriptor,
          class Handler_module,
          std::size_t group_size = 64,
-         std::size_t node_batch_load_size = 2,
-         std::size_t particle_batch_load_size = 4,
+         std::size_t node_batch_load_size = 8,
+         std::size_t particle_batch_load_size = 8,
          std::size_t group_coherence_size = 32>
 class grouped_depth_first
 {
 public:
   QCL_MAKE_MODULE(grouped_depth_first)
 
-  static_assert(group_size % 2 == 0, "The group size must be even.");
-  static_assert(node_batch_load_size <= group_size, "The number of batch loaded nodes must be "
-                                                    "<= the work group size");
-  static_assert(node_batch_load_size % 2 == 0, "The number of batch loaded nodes must be even");
-  static_assert(particle_batch_load_size % 2 == 0, "The number of batch loaded particles must be even");
-  static_assert(particle_batch_load_size % node_batch_load_size == 0,
-                "The number of batch loaded particles must be a multiple of the number of "
-                "batch loaded nodes");
 
-  static_assert(particle_batch_load_size <= group_size && 
-                node_batch_load_size <= group_size,
-                "The number of batch loaded particles and nodes cannot be larger than"
-                " the work group size");
   using handler_type = Handler_module;
   using particle_type = 
       typename configuration<Type_descriptor>::particle_type;
   using vector_type =
       typename configuration<Type_descriptor>::vector_type;
 
-  static_assert(sizeof(particle_type) >= sizeof(vector_type),
-                "particle_type should always be larger/equal than vector_type");
 
+
+  static_assert(spatialcl::utils::binary::is_small_power2<group_size>::value, 
+               "The group size must be a power of two.");
+  static_assert(spatialcl::utils::binary::is_small_power2<node_batch_load_size>::value, 
+               "The number of batch loaded nodes must be a power of two");
+  static_assert(spatialcl::utils::binary::is_small_power2<particle_batch_load_size>::value,
+               "The number of batch loaded particles must be a power of two");
+
+  static_assert(particle_batch_load_size <= group_size && 
+                node_batch_load_size <= group_size,
+                "The number of batch loaded particles and nodes cannot be larger than"
+                " the work group size");
+
+  static_assert(particle_batch_load_size >= node_batch_load_size,
+                "The number of batch loaded particles cannot be smaller than "
+                "the number of batch loaded nodes.");
+  static_assert(sizeof(particle_type) >= sizeof(vector_type),
+                "particle_type cannot be smaller than vector_type, since "
+                "this would break alignment on the device");
+
+
+
+  
+  /// Execute query
   cl_int operator()(const qcl::device_context_ptr& ctx,
                     const cl::Buffer& particles,
                     const cl::Buffer& bbox_min_corner,
@@ -90,8 +131,8 @@ public:
                                   evt);
 
     std::size_t local_mem_size = 
-          std::max(particle_batch_load_size * sizeof(particle_type), 
-                   node_batch_load_size * 2 * sizeof(vector_type)) + sizeof(cl_int);
+          std::max(particle_batch_load_size * sizeof(particle_type) + sizeof(cl_int), 
+                   node_batch_load_size * 2 * sizeof(vector_type) + group_size * sizeof(cl_int));
 
     call.partial_argument_list(particles,
                                bbox_min_corner,
@@ -106,6 +147,9 @@ public:
   }
 
 private:
+  static constexpr std::size_t vertical_level_stride_size = 
+        spatialcl::utils::binary::small_binary_logarithm<node_batch_load_size>::value;
+
   QCL_ENTRYPOINT(query)
   QCL_MAKE_SOURCE(
     QCL_INCLUDE_MODULE(configuration<Type_descriptor>)
@@ -115,11 +159,18 @@ private:
     QCL_IMPORT_CONSTANT(group_coherence_size)
     QCL_IMPORT_CONSTANT(node_batch_load_size)
     QCL_IMPORT_CONSTANT(particle_batch_load_size)
+    QCL_IMPORT_CONSTANT(vertical_level_stride_size)
     R"(
       #if group_size <= barrier_coherence_size
        #define fast_barrier(flags)
       #else
        #define fast_barrier(flags) barrier(flags)
+      #endif
+
+      #if node_batch_load_size <= barrier_coherence_size
+       #define node_fast_barrier(flags)
+      #else
+       #define node_fast_barrier(flags) barrier(flags)
       #endif
     )"
     QCL_RAW(
@@ -129,6 +180,20 @@ private:
       {
         return binary_tree_key_encode_global_id(node,effective_num_levels)
                - effective_num_particles;
+      }
+
+      int work_group_node_idx_min(__local int* mem, size_t lid)
+      {
+        for(int i = group_size/2; i>0; i >>= 1)
+        {
+          if(lid < i)
+            mem[lid] = min(mem[lid], mem[lid + i]);
+          fast_barrier(CLK_LOCAL_MEM_FENCE);
+        }
+
+        int result = mem[0];
+        fast_barrier(CLK_LOCAL_MEM_FENCE);
+        return result;
       }
     )
     QCL_PREPROCESSOR(define, get_query_id() tid)
@@ -185,13 +250,9 @@ private:
         // in case we remain at the particle level.
         group_start_node.local_node_id += num_available_particles;
 
-        // We can only go up from the particle level, if we have processed 2*node_batch_load_size
-        // particles. This guarantees that, when going up, we do not arrive
-        // at the same parent nodes that we have already processed previously.
-        // This alignment with the parent node happens if the start position of
-        // the next particle group is a multiple of the node_batch_load_size.
-        int aligned_with_parent = (group_start_node.local_node_id % node_batch_load_size == 0);
-        int go_up = !(*some_particles_selected) && aligned_with_parent;
+        
+        int go_up = !(*some_particles_selected);
+    
         fast_barrier(CLK_LOCAL_MEM_FENCE);
 
         if(go_up)
@@ -215,24 +276,29 @@ private:
                        num_covered_particles,
                        cache)
       {
-         const size_t lid = get_local_id(0);
+        const size_t lid = get_local_id(0);
 
         __local vector_type* bbox_min_corner_cache =
                        (__local vector_type*)cache;
         __local vector_type* bbox_max_corner_cache =
                        bbox_min_corner_cache + node_batch_load_size;
-        __local int* some_nodes_selected =
+        __local int* first_selected_nodes =
                        (__local int*)(bbox_max_corner_cache + node_batch_load_size);
 
-        ulong node_idx_begin = get_node_index(&group_start_node,
-                                              effective_num_levels,
-                                              effective_num_particles);
-        int num_available_nodes = 
-          min((int)(node_batch_load_size),
-              (int)(binary_tree_get_num_populated_nodes(group_start_node.level, 
-                                                        effective_num_levels, 
-                                                        num_particles)
-                                                    - group_start_node.local_node_id));
+        const ulong node_idx_begin = get_node_index(&group_start_node,
+                                                    effective_num_levels,
+                                                    effective_num_particles);
+        
+        // The number of available nodes is either the distance to the next
+        // aligned node or (if we are at the last segment before the data ends)
+        // the distance to the end of the data array
+        const int num_available_nodes =
+            min((int)(node_batch_load_size - node_idx_begin % node_batch_load_size),
+                (int)(binary_tree_get_num_populated_nodes(group_start_node.level,
+                                                          effective_num_levels,
+                                                          num_particles) -
+                      group_start_node.local_node_id));
+
 
         // Load nodes collectively into the cache
         if(lid < num_available_nodes)
@@ -240,14 +306,13 @@ private:
           bbox_min_corner_cache[lid] = bbox_min_corner[node_idx_begin + lid];
           bbox_max_corner_cache[lid] = bbox_max_corner[node_idx_begin + lid];
         }
-        *some_nodes_selected = 0;
+        first_selected_nodes[lid] = num_available_nodes;
         fast_barrier(CLK_LOCAL_MEM_FENCE);
 
         // For each query, iterate over the nodes in the
         // cache and check if nodes should be selected.
         if(tid < get_num_queries())
         {
-          
           for(int i = 0; i < num_available_nodes; ++i)
           {
             int node_selected = 0;
@@ -263,61 +328,68 @@ private:
 
             // If the query has decided to select some nodes,
             // mark this work item as having selected nodes
-            // in the some_nodes_selected local memory area
+            // in the first_selected_nodes local memory area
             if(node_selected)
-              *some_nodes_selected = 1;
-          }  
+            {
+              first_selected_nodes[lid] = i;
+              break;
+            }
+          }
         }
         fast_barrier(CLK_LOCAL_MEM_FENCE);
 
         // We must investigate deeper levels, if at least
         // one query wants to investigate deeper levels.
-        // For this, we need a reduction
-        int go_deeper = *some_nodes_selected;
-        fast_barrier(CLK_LOCAL_MEM_FENCE);
+        // For this, we need a reduction.
+        // We obtain the id of the first node that has been selected
+        // by any work item.
+        // If no node was selected, the id will still be set to
+        // num_available_nodes, which is the value we initialized it with.
+        const int first_node = work_group_node_idx_min(first_selected_nodes, lid);
 
-        if(go_deeper)
+        // Trigger the discard event for all skipped nodes
+        if(tid < get_num_queries())
+          for (int i = 0; i < first_node; ++i)
+            dfs_unique_node_discard_event(node_idx_begin + i,
+                                          bbox_min_corner_cache[i],
+                                          bbox_max_corner_cache[i]);
+
+        // Advance the number of covered particles
+        num_covered_particles +=
+                          first_node * BT_LEAVES_PER_NODE(group_start_node.level,
+                                                          effective_num_levels);
+
+        if(first_node < num_available_nodes)
         {
           // Some queries/work items want to go to the next deeper level
-          group_start_node = binary_tree_get_children_begin(&group_start_node);
+
+          // Calculate the vertical stride, i.e. how many levels we
+          // are moving deeper. min() makes sure that we do not go deeper
+          // than the lowest level.
+          uint vertical_stride = min((uint)vertical_level_stride_size, 
+                                     (uint)(effective_num_levels - group_start_node.level - 1));
+
+          group_start_node.level += vertical_stride;
+          group_start_node.local_node_id += first_node;
+          group_start_node.local_node_id <<= vertical_stride;
         }
         else
         {
-          // No query/work item wants to deeper, so the entire work group
+          // No query/work item wants to go deeper, so the entire work group
           // should move up in the tree
-
-          // Trigger the node discard event for all nodes
-          if(tid < get_num_queries())
-          {
-            for(int i = 0; i < num_available_nodes; ++i)
-              dfs_unique_node_discard_event(node_idx_begin + i,
-                                            bbox_min_corner_cache[i],
-                                            bbox_max_corner_cache[i]);
-          }
-
-          // Advance the number of covered particles
-          num_covered_particles +=
-                         num_available_nodes * BT_LEAVES_PER_NODE(group_start_node.level,
-                                                                  effective_num_levels);
-
-          // If we already have completed two segments on this level,
-          // go up, else remain on this level. This ensures that no
-          // redundant work is done with respect to the upper level from
-          // where we come.
-          // In both cases, we first need to increment the local node id
-          int odd_segment = (group_start_node.local_node_id / node_batch_load_size) & 1;
-
           group_start_node.local_node_id += num_available_nodes;
-          if(odd_segment)
-          {
-            group_start_node.level--;
-            group_start_node.local_node_id >>= 1;
-          }
+          group_start_node.level -= vertical_level_stride_size;
+
+          //if(group_start_node.local_node_id % 2 != 0 && num_covered_particles < num_particles)
+          //  printf("Error: Rounding down (group from %d to %d) covered %d\n",(int)group_start_node.local_node_id,
+          //   (int)(group_start_node.local_node_id+num_available_nodes), (int)num_covered_particles);
+          group_start_node.local_node_id >>= vertical_level_stride_size;
+          
         }
       }
     )
     QCL_RAW(
-
+    
       __kernel void query(__global particle_type* particles,
                           __global vector_type* bbox_min_corner,
                           __global vector_type* bbox_max_corner,
@@ -342,6 +414,8 @@ private:
         for(ulong num_covered_particles = 0;
             num_covered_particles < num_particles;)
         {
+          //if(get_global_id(0)==1000)
+          //  printf("level: %d position: %d covered: %d\n", group_start_node.level, (int)group_start_node.local_node_id,(int)num_covered_particles);
           if (group_start_node.level == effective_num_levels - 1)
           {
             QUERY_PARTICLE_LEVEL(particles,
@@ -365,6 +439,8 @@ private:
           }
         }
         at_query_exit();
+        //if(get_global_id(0)==0)
+        //  printf("Exiting\n");
       }
 
     )

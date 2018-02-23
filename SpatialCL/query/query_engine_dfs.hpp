@@ -243,7 +243,6 @@ private:
                             ulong effective_num_levels,
                             declare_full_query_parameter_set())
         {
-
           for(size_t tid = get_global_id(0);
               tid < get_num_queries();
               tid += get_global_size(0))
