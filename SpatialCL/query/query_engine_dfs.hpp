@@ -48,13 +48,12 @@ enum depth_first_iteration_strategy
 
 template<class Type_descriptor,
          class Handler_module,
-         depth_first_iteration_strategy Iteration_strategy>
+         depth_first_iteration_strategy Iteration_strategy,
+         std::size_t group_size = 256>
 class depth_first
 {
 public:
   QCL_MAKE_MODULE(depth_first)
-
-  static constexpr std::size_t group_size = 256;
 
   using handler_type = Handler_module;
 

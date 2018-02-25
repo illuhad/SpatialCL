@@ -40,7 +40,7 @@ class environment
 public:
   environment()
   {
-    const cl::Platform& platform = _env.get_platform_by_preference({"NVIDIA",
+    const cl::Platform& platform = _env.get_platform_by_preference({"pocl",
                                                                    "AMD",
                                                                    "Intel"});
     qcl::global_context_ptr global_ctx = _env.create_global_context(platform,

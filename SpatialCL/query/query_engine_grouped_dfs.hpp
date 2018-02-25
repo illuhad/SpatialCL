@@ -77,6 +77,8 @@ template<class Type_descriptor,
          std::size_t group_size = 64,
          std::size_t node_batch_load_size = 8,
          std::size_t particle_batch_load_size = 8,
+         std::size_t vertical_level_stride_size = 
+            spatialcl::utils::binary::small_binary_logarithm<node_batch_load_size>::value,
          std::size_t group_coherence_size = 32>
 class grouped_depth_first
 {
@@ -90,7 +92,11 @@ public:
   using vector_type =
       typename configuration<Type_descriptor>::vector_type;
 
-
+  static_assert(group_size > 0, "group size must be > 0");
+  static_assert(node_batch_load_size > 0, "node_batch_load_size must be > 0");
+  static_assert(particle_batch_load_size > 0, "particle_batch_load_size must be > 0");
+  static_assert(vertical_level_stride_size > 0, "vertical_level_stride_size must be > 0");
+  static_assert(group_coherence_size > 0, "group coherence size must be > 0");
 
   static_assert(spatialcl::utils::binary::is_small_power2<group_size>::value, 
                "The group size must be a power of two.");
@@ -110,6 +116,10 @@ public:
   static_assert(sizeof(particle_type) >= sizeof(vector_type),
                 "particle_type cannot be smaller than vector_type, since "
                 "this would break alignment on the device");
+
+  static_assert(vertical_level_stride_size <= 
+                spatialcl::utils::binary::small_binary_logarithm<node_batch_load_size>::value,
+                "The vertical level stride cannot be larger than log2(node_batch_load_size)");
 
 
 
@@ -147,8 +157,6 @@ public:
   }
 
 private:
-  static constexpr std::size_t vertical_level_stride_size = 
-        spatialcl::utils::binary::small_binary_logarithm<node_batch_load_size>::value;
 
   QCL_ENTRYPOINT(query)
   QCL_MAKE_SOURCE(
@@ -167,11 +175,6 @@ private:
        #define fast_barrier(flags) barrier(flags)
       #endif
 
-      #if node_batch_load_size <= barrier_coherence_size
-       #define node_fast_barrier(flags)
-      #else
-       #define node_fast_barrier(flags) barrier(flags)
-      #endif
     )"
     QCL_RAW(
       ulong get_node_index(binary_tree_key_t* node,
@@ -276,6 +279,7 @@ private:
                        num_covered_particles,
                        cache)
       {
+
         const size_t lid = get_local_id(0);
 
         __local vector_type* bbox_min_corner_cache =
@@ -313,6 +317,7 @@ private:
         // cache and check if nodes should be selected.
         if(tid < get_num_queries())
         {
+//#pragma unroll node_batch_load_size
           for(int i = 0; i < num_available_nodes; ++i)
           {
             int node_selected = 0;
@@ -329,7 +334,7 @@ private:
             // If the query has decided to select some nodes,
             // mark this work item as having selected nodes
             // in the first_selected_nodes local memory area
-            if(node_selected)
+            if (node_selected)
             {
               first_selected_nodes[lid] = i;
               break;
@@ -377,12 +382,8 @@ private:
         {
           // No query/work item wants to go deeper, so the entire work group
           // should move up in the tree
-          group_start_node.local_node_id += num_available_nodes;
           group_start_node.level -= vertical_level_stride_size;
-
-          //if(group_start_node.local_node_id % 2 != 0 && num_covered_particles < num_particles)
-          //  printf("Error: Rounding down (group from %d to %d) covered %d\n",(int)group_start_node.local_node_id,
-          //   (int)(group_start_node.local_node_id+num_available_nodes), (int)num_covered_particles);
+          group_start_node.local_node_id += num_available_nodes;
           group_start_node.local_node_id >>= vertical_level_stride_size;
           
         }
@@ -414,8 +415,6 @@ private:
         for(ulong num_covered_particles = 0;
             num_covered_particles < num_particles;)
         {
-          //if(get_global_id(0)==1000)
-          //  printf("level: %d position: %d covered: %d\n", group_start_node.level, (int)group_start_node.local_node_id,(int)num_covered_particles);
           if (group_start_node.level == effective_num_levels - 1)
           {
             QUERY_PARTICLE_LEVEL(particles,
@@ -439,8 +438,6 @@ private:
           }
         }
         at_query_exit();
-        //if(get_global_id(0)==0)
-        //  printf("Exiting\n");
       }
 
     )

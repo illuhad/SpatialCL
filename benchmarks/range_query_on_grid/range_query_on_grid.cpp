@@ -203,7 +203,7 @@ int main()
 
   RUN_BENCHMARK(strict_dfs_range_engine);
   RUN_BENCHMARK(relaxed_dfs_range_engine);
-  RUN_BENCHMARK(grouped_dfs_range_engine<16>);
+  //RUN_BENCHMARK(grouped_dfs_range_engine<16>);
   RUN_BENCHMARK(grouped_dfs_range_engine<32>);
   RUN_BENCHMARK(grouped_dfs_range_engine<64>);
   RUN_BENCHMARK(grouped_dfs_range_engine<128>);

@@ -1,6 +1,6 @@
 
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall -Wextra -Wno-ignored-attributes -Wno-unused-parameter")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -ffast-math -Wall -Wno-ignored-attributes -Wextra -Wno-unused-parameter")
+set(CMAKE_CXX_FLAGS_RELEASE "-g -O3 -march=native -ffast-math -Wall -Wno-ignored-attributes -Wextra -Wno-unused-parameter")
 
 
 cmake_minimum_required (VERSION 2.6)
