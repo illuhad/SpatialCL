@@ -49,24 +49,32 @@ namespace engine {
 ///    * A lot of time is spent at the particle level.
 /// This is for example the case for ordered range queries over large ranges.
 /// Conceptually, this engine works similar to the \c relaxed_dfs_query_engine,
-/// with the difference that an entire work group moves together to the tree.
-/// This means that performance will degrade greatly if work items of the same
-/// work group want to access very different parts of the tree.
+/// with the difference that an entire group of work items moves together to the tree.
+/// This group can be an entire work group, or it can be a portion of a work group that
+/// we call subgroup.
+/// The common movement means that performance will degrade greatly if work items of
+/// the same work group want to access very different parts of the tree.
 /// At the node levels, a number of nodes will be loaded collectively into local
-/// memory where they are processed by the entire work group.
+/// memory where they are processed by the entire subgroup.
 /// Similarly, at the particle level particles are loaded collectively into local memory
-/// where they are processed by the entire work group.
+/// where they are processed by the entire subgroup.
 /// This means that the algorithm locally converges to the optimal brute-force
-/// solution if enough time is spent at the particle level.
+/// local memory based algorithm if enough time is spent at the particle level.
 ///
 /// This query engine satisfies the DFS query engine interface concept.
 /// \tparam Type_descriptor The type system
 /// \tparam Handler_module The query handler. Must satisfy the DFS concept.
 /// \tparam group_size The work group size
+/// \tparam subgroup_size The number of adjacent work items that share data
+/// in the node and particle cache. All work items from one subgroup will exhibit the
+/// exact same movement through the tree. The subgroup size must be <= the work group size.
+/// If the subgroup size is smaller than the group size, then it must be
+/// smaller than the warp/wavefront size (= \c group_coherence_size) due to synchronization
+/// details. If it equals the group size, it can be larger than one warp or wavefront.
 /// \tparam node_batch_load_size How many consecutive nodes are loaded collectively into
-/// local memory.
+/// local memory by one subgroup.
 /// \tparam particle_batch_load_size How many consecutive particles are loaded collectively 
-/// into local memory
+/// into local memory by one subgroup.
 /// \tparam group_coherence_size Number of consecutive work items in a work group
 /// that are always synchronized with respect to each other. The algorithm will
 /// remove explicit synchronization (e.g. barrier()) calls if the synchronization
@@ -75,11 +83,13 @@ namespace engine {
 template<class Type_descriptor,
          class Handler_module,
          std::size_t group_size = 64,
+         std::size_t subgroup_size = group_size,
          std::size_t node_batch_load_size = 8,
          std::size_t particle_batch_load_size = 8,
-         std::size_t vertical_level_stride_size = 
-            spatialcl::utils::binary::small_binary_logarithm<node_batch_load_size>::value,
-         std::size_t group_coherence_size = 32>
+         std::size_t group_coherence_size = 32,
+         std::size_t vertical_level_stride_size =
+            spatialcl::utils::binary::small_binary_logarithm<node_batch_load_size>::value
+         >
 class grouped_depth_first
 {
 public:
@@ -116,12 +126,28 @@ public:
   static_assert(sizeof(particle_type) >= sizeof(vector_type),
                 "particle_type cannot be smaller than vector_type, since "
                 "this would break alignment on the device");
+  static_assert(sizeof(particle_type) % sizeof(vector_type) == 0,
+                "The size of particle_type must be a multiple of the size"
+                " of vector_type");
 
   static_assert(vertical_level_stride_size <= 
                 spatialcl::utils::binary::small_binary_logarithm<node_batch_load_size>::value,
                 "The vertical level stride cannot be larger than log2(node_batch_load_size)");
 
+  static_assert(subgroup_size <= group_size,
+                "The subgroup size cannot be larger than the group size");
+  static_assert(subgroup_size <= group_coherence_size || subgroup_size == group_size,
+                "subgroup size must either be <= the warp/wavefront size, or"
+                " the subgroup size must equal the work group size");
+  static_assert(group_coherence_size % subgroup_size == 0 || subgroup_size == group_size,
+                "warp/wavefront size must be a multiple of the subgroup size, "
+                "if the subgroup size does not equal the work group size");
+  static_assert(group_size % subgroup_size == 0,
+                "group size must be multiple of the subgroup size");
 
+  static_assert(subgroup_size >= node_batch_load_size &&
+                subgroup_size >= particle_batch_load_size,
+                "Currently, the subgroup size cannot be smaller than the batch load size");
 
   
   /// Execute query
@@ -140,23 +166,36 @@ public:
                                   cl::NDRange{group_size},
                                   evt);
 
-    std::size_t local_mem_size = 
-          std::max(particle_batch_load_size * sizeof(particle_type) + sizeof(cl_int), 
-                   node_batch_load_size * 2 * sizeof(vector_type) + group_size * sizeof(cl_int));
 
     call.partial_argument_list(particles,
                                bbox_min_corner,
                                bbox_max_corner,
                                static_cast<cl_ulong>(num_particles),
                                static_cast<cl_ulong>(effective_num_particles),
-                               static_cast<cl_ulong>(effective_num_levels),
-                               qcl::local_memory<cl_uchar>{local_mem_size});
+                               static_cast<cl_ulong>(effective_num_levels));
 
     handler.push_full_arguments(call);
     return call.enqueue_kernel();
   }
 
 private:
+  // In C++11, std::max is not constexpr (fixed in C++14).
+  // We use the following workaround:
+  template<class T>
+  static constexpr T static_max(T a, T b)
+  { return (a > b) ? a : b; }
+
+  static constexpr std::size_t num_subgroups = group_size / subgroup_size;
+  // Number of particle_type elements in the cache
+  static constexpr std::size_t subgroup_cache_size =
+            // We need the maximum of the space needed at particle or node level.
+            // The +sizeof(particle_type)-1 rounds up the integer division to ensure
+            // that there is always enough space allocated.
+            (static_max(particle_batch_load_size * sizeof(particle_type),
+                        node_batch_load_size * 2 * sizeof(vector_type))+sizeof(particle_type)-1)
+            / sizeof(particle_type);
+  // The amount of cache memory in units of particles
+  static constexpr std::size_t total_cache_size = subgroup_cache_size * num_subgroups;
 
   QCL_ENTRYPOINT(query)
   QCL_MAKE_SOURCE(
@@ -168,13 +207,26 @@ private:
     QCL_IMPORT_CONSTANT(node_batch_load_size)
     QCL_IMPORT_CONSTANT(particle_batch_load_size)
     QCL_IMPORT_CONSTANT(vertical_level_stride_size)
+    QCL_IMPORT_CONSTANT(subgroup_size)
+    QCL_IMPORT_CONSTANT(num_subgroups)
+    QCL_IMPORT_CONSTANT(total_cache_size)
+    QCL_IMPORT_CONSTANT(subgroup_cache_size)
     R"(
-      #if group_size <= barrier_coherence_size
-       #define fast_barrier(flags)
+      #if subgroup_size < group_size
+        // If we use multiple subgroups, we don't need barriers because
+        // subgroups are not allowed to span several warps/wavefronts.
+        // But we may need mem_fences, to ensure correct ordering of
+        // loads/stores
+        #define fast_barrier(flags) mem_fence(flags)
+      #elif group_size <= group_coherence_size
+        // Without subgroups, we don't need full synchronization
+        // if the group size is smaller than one warp/wavefront
+        #define fast_barrier(flags) mem_fence(flags)
       #else
-       #define fast_barrier(flags) barrier(flags)
+        // Without subgroups and group sizes larger
+        // than a warp, we need full-fledged barriers
+        #define fast_barrier(flags) barrier(flags)
       #endif
-
     )"
     QCL_RAW(
       ulong get_node_index(binary_tree_key_t* node,
@@ -185,16 +237,17 @@ private:
                - effective_num_particles;
       }
 
-      int work_group_node_idx_min(__local int* mem, size_t lid)
+      int subgroup_node_idx_min(__local int* subgroup_mem,
+                                const size_t subgroup_lid)
       {
-        for(int i = group_size/2; i>0; i >>= 1)
+        for(int i = subgroup_size/2; i > 0; i >>= 1)
         {
-          if(lid < i)
-            mem[lid] = min(mem[lid], mem[lid + i]);
+          if(subgroup_lid < i)
+            subgroup_mem[subgroup_lid] = min(subgroup_mem[subgroup_lid  ],
+                                             subgroup_mem[subgroup_lid+i]);
           fast_barrier(CLK_LOCAL_MEM_FENCE);
         }
-
-        int result = mem[0];
+        int result = subgroup_mem[0];
         fast_barrier(CLK_LOCAL_MEM_FENCE);
         return result;
       }
@@ -207,23 +260,20 @@ private:
                            effective_num_levels,
                            group_start_node,
                            num_covered_particles,
-                           cache)
+                           subgroup_lid,
+                           subgroup_selection_map,
+                           subgroup_particle_cache)
       {
-        size_t lid = get_local_id(0);
-
-        __local particle_type* particle_cache = cache;
-        __local int* some_particles_selected = 
-                   (__local int *)(particle_cache + particle_batch_load_size);
-
         ulong particle_idx_begin = group_start_node.local_node_id;
         const int num_available_particles = min((int)particle_batch_load_size, 
                                                 (int)(num_particles-num_covered_particles));
         
         // Load particles collectively into the cache
-        if(lid < num_available_particles)
-          particle_cache[lid] = particles[particle_idx_begin + lid];
-        *some_particles_selected = 0;
+        if(subgroup_lid < num_available_particles)
+          subgroup_particle_cache[subgroup_lid] =
+                         particles[particle_idx_begin + subgroup_lid];
 
+        *subgroup_selection_map = 0;
         fast_barrier(CLK_LOCAL_MEM_FENCE);
 
         // For each query, iterate over the particles in the
@@ -236,7 +286,7 @@ private:
             int particle_selected = 0;
             dfs_particle_processor(&particle_selected,
                                    (particle_idx_begin + i),
-                                   particle_cache[i]);
+                                   subgroup_particle_cache[i]);
 
             any_particle_selected |= particle_selected;
           }
@@ -244,7 +294,7 @@ private:
           // If the query has decided to select some particle,
           // mark this in the level state
           if(any_particle_selected)
-            *some_particles_selected = 1;
+            *subgroup_selection_map = 1;
         }
         fast_barrier(CLK_LOCAL_MEM_FENCE);
 
@@ -253,10 +303,7 @@ private:
         // in case we remain at the particle level.
         group_start_node.local_node_id += num_available_particles;
 
-        
-        int go_up = !(*some_particles_selected);
-    
-        fast_barrier(CLK_LOCAL_MEM_FENCE);
+        int go_up = !(*subgroup_selection_map);
 
         if(go_up)
         {
@@ -277,17 +324,16 @@ private:
                        effective_num_levels,
                        group_start_node,
                        num_covered_particles,
-                       cache)
+                       subgroup_lid,
+                       subgroup_first_selected_nodes,
+                       subgroup_cache)
       {
 
-        const size_t lid = get_local_id(0);
-
         __local vector_type* bbox_min_corner_cache =
-                       (__local vector_type*)cache;
+                       (__local vector_type*)subgroup_cache;
         __local vector_type* bbox_max_corner_cache =
                        bbox_min_corner_cache + node_batch_load_size;
-        __local int* first_selected_nodes =
-                       (__local int*)(bbox_max_corner_cache + node_batch_load_size);
+
 
         const ulong node_idx_begin = get_node_index(&group_start_node,
                                                     effective_num_levels,
@@ -305,12 +351,14 @@ private:
 
 
         // Load nodes collectively into the cache
-        if(lid < num_available_nodes)
+        if(subgroup_lid < num_available_nodes)
         {
-          bbox_min_corner_cache[lid] = bbox_min_corner[node_idx_begin + lid];
-          bbox_max_corner_cache[lid] = bbox_max_corner[node_idx_begin + lid];
+          bbox_min_corner_cache[subgroup_lid] =
+                             bbox_min_corner[node_idx_begin + subgroup_lid];
+          bbox_max_corner_cache[subgroup_lid] =
+                             bbox_max_corner[node_idx_begin + subgroup_lid];
         }
-        first_selected_nodes[lid] = num_available_nodes;
+        subgroup_first_selected_nodes[subgroup_lid] = num_available_nodes;
         fast_barrier(CLK_LOCAL_MEM_FENCE);
 
         // For each query, iterate over the nodes in the
@@ -336,7 +384,7 @@ private:
             // in the first_selected_nodes local memory area
             if (node_selected)
             {
-              first_selected_nodes[lid] = i;
+              subgroup_first_selected_nodes[subgroup_lid] = i;
               break;
             }
           }
@@ -344,13 +392,14 @@ private:
         fast_barrier(CLK_LOCAL_MEM_FENCE);
 
         // We must investigate deeper levels, if at least
-        // one query wants to investigate deeper levels.
+        // one query of the subgroup wants to investigate deeper levels.
         // For this, we need a reduction.
         // We obtain the id of the first node that has been selected
         // by any work item.
         // If no node was selected, the id will still be set to
         // num_available_nodes, which is the value we initialized it with.
-        const int first_node = work_group_node_idx_min(first_selected_nodes, lid);
+        const int first_node = subgroup_node_idx_min(subgroup_first_selected_nodes,
+                                                     subgroup_lid);
 
         // Trigger the discard event for all skipped nodes
         if(tid < get_num_queries())
@@ -397,13 +446,23 @@ private:
                           ulong num_particles,
                           ulong effective_num_particles,
                           ulong effective_num_levels,
-                          // We pass the local memory as particle_type
-                          // because particle_type is the largest of the cached
-                          // data types (the others being int and vector_type).
-                          // This guarantees a correct alignment.
-                          __local particle_type* cache,
                           declare_full_query_parameter_set())
       {
+        __local int node_selection_map [group_size];
+        // This cache will be used both for particles and nodes.
+        // It is important to use particle_type as type, since
+        // sizeof(particle_type)>=sizeof(vector_type), hence
+        // using particle_type guarantees correct alignment.
+        __local particle_type cache [total_cache_size];
+
+        const int subgroup_id = get_local_id(0) / subgroup_size;
+        const int subgroup_lid = get_local_id(0) % subgroup_size;
+
+        __local particle_type* subgroup_cache =
+                  cache + subgroup_id * subgroup_cache_size;
+        __local int* subgroup_node_selection_map =
+                  node_selection_map + subgroup_id * subgroup_size;
+
         size_t tid = get_global_id(0);
 
         at_query_init();
@@ -423,7 +482,9 @@ private:
                                  effective_num_levels,
                                  group_start_node,
                                  num_covered_particles,
-                                 cache);
+                                 subgroup_lid,
+                                 subgroup_node_selection_map,
+                                 subgroup_cache);
           }
           else
           {
@@ -434,7 +495,9 @@ private:
                              effective_num_levels,
                              group_start_node,
                              num_covered_particles,
-                             cache);
+                             subgroup_lid,
+                             subgroup_node_selection_map,
+                             subgroup_cache);
           }
         }
         at_query_exit();

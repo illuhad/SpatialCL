@@ -208,6 +208,7 @@ int main()
   RUN_BENCHMARK(grouped_dfs_range_engine<64>);
   RUN_BENCHMARK(grouped_dfs_range_engine<128>);
   RUN_BENCHMARK(grouped_dfs_range_engine<256>);
+  RUN_BENCHMARK(grouped_dfs_range_engine<512>);
   RUN_BENCHMARK(register_bfs_range_engine);
 
   return 0;
