@@ -215,13 +215,11 @@ private:
       #if subgroup_size < group_size
         // If we use multiple subgroups, we don't need barriers because
         // subgroups are not allowed to span several warps/wavefronts.
-        // But we may need mem_fences, to ensure correct ordering of
-        // loads/stores
-        #define fast_barrier(flags) mem_fence(flags)
+        #define fast_barrier(flags)
       #elif group_size <= group_coherence_size
         // Without subgroups, we don't need full synchronization
         // if the group size is smaller than one warp/wavefront
-        #define fast_barrier(flags) mem_fence(flags)
+        #define fast_barrier(flags)
       #else
         // Without subgroups and group sizes larger
         // than a warp, we need full-fledged barriers
@@ -237,7 +235,7 @@ private:
                - effective_num_particles;
       }
 
-      int subgroup_node_idx_min(__local int* subgroup_mem,
+      int subgroup_node_idx_min(volatile __local int* subgroup_mem,
                                 const size_t subgroup_lid)
       {
         for(int i = subgroup_size/2; i > 0; i >>= 1)
@@ -273,7 +271,8 @@ private:
           subgroup_particle_cache[subgroup_lid] =
                          particles[particle_idx_begin + subgroup_lid];
 
-        *subgroup_selection_map = 0;
+        //*subgroup_selection_map = 0;
+        subgroup_selection_map[subgroup_lid] = num_available_particles;
         fast_barrier(CLK_LOCAL_MEM_FENCE);
 
         // For each query, iterate over the particles in the
@@ -294,7 +293,8 @@ private:
           // If the query has decided to select some particle,
           // mark this in the level state
           if(any_particle_selected)
-            *subgroup_selection_map = 1;
+            //*subgroup_selection_map = 1;
+            subgroup_selection_map[subgroup_lid] = -1;
         }
         fast_barrier(CLK_LOCAL_MEM_FENCE);
 
@@ -303,14 +303,18 @@ private:
         // in case we remain at the particle level.
         group_start_node.local_node_id += num_available_particles;
 
-        int go_up = !(*subgroup_selection_map);
+        //int go_up = !(*subgroup_selection_map);
+        int go_up = (subgroup_node_idx_min(subgroup_selection_map, subgroup_lid)!=-1);
+        fast_barrier(CLK_LOCAL_MEM_FENCE);
 
         if(go_up)
         {
           // No query/work item was interested in any particles from
           // this region, so the entire work group should move up in the tree
-          group_start_node.level--;
-          group_start_node.local_node_id >>= 1;
+          //group_start_node.level--;
+          //group_start_node.local_node_id >>= 1;
+          group_start_node.level -= vertical_level_stride_size;
+          group_start_node.local_node_id >>= vertical_level_stride_size;
         }
 
         num_covered_particles += num_available_particles;
@@ -329,9 +333,9 @@ private:
                        subgroup_cache)
       {
 
-        __local vector_type* bbox_min_corner_cache =
+        __local vector_type* const bbox_min_corner_cache =
                        (__local vector_type*)subgroup_cache;
-        __local vector_type* bbox_max_corner_cache =
+        __local vector_type* const bbox_max_corner_cache =
                        bbox_min_corner_cache + node_batch_load_size;
 
 
@@ -441,8 +445,8 @@ private:
     QCL_RAW(
     
       __kernel void query(__global particle_type* particles,
-                          __global vector_type* bbox_min_corner,
-                          __global vector_type* bbox_max_corner,
+                          __global vector_type* restrict bbox_min_corner,
+                          __global vector_type* restrict bbox_max_corner,
                           ulong num_particles,
                           ulong effective_num_particles,
                           ulong effective_num_levels,
@@ -458,9 +462,9 @@ private:
         const int subgroup_id = get_local_id(0) / subgroup_size;
         const int subgroup_lid = get_local_id(0) % subgroup_size;
 
-        __local particle_type* subgroup_cache =
+        volatile __local particle_type* const subgroup_cache =
                   cache + subgroup_id * subgroup_cache_size;
-        __local int* subgroup_node_selection_map =
+        volatile __local int* const subgroup_node_selection_map =
                   node_selection_map + subgroup_id * subgroup_size;
 
         size_t tid = get_global_id(0);
