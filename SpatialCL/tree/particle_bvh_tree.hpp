@@ -29,115 +29,59 @@
 #ifndef PARTICLE_BVH_TREE
 #define PARTICLE_BVH_TREE
 
+#include <QCL/qcl.hpp>
+#include <QCL/qcl_module.hpp>
 #include <QCL/qcl_array.hpp>
-
-#include <boost/compute.hpp>
-#include <cassert>
-#include <functional>
-#include "binary_tree.hpp"
-#include "../configuration.hpp"
-#include "../cl_utils.hpp"
-
+#include "particle_tree.hpp"
 
 namespace spatialcl {
 
-template<class Particle_sorter, class Type_descriptor>
-class particle_bvh_tree
+template<class Particle_sorter,
+         class Type_descriptor>
+class particle_bvh_tree : public particle_tree<Particle_sorter,
+                                               Type_descriptor,
+                                               typename configuration<Type_descriptor>::vector_type,
+                                               typename configuration<Type_descriptor>::vector_type>
 {
 public:
   QCL_MAKE_MODULE(particle_bvh_tree)
 
   using particle_type = typename configuration<Type_descriptor>::particle_type;
-  using vector_type   = typename configuration<Type_descriptor>::vector_type;
-  using boost_particle = typename qcl::to_boost_vector_type<particle_type>::type;
+  using vector_type = typename configuration<Type_descriptor>::vector_type;
 
-  using type_system = Type_descriptor;
+  using base_type = particle_tree<
+    Particle_sorter,
+    Type_descriptor,
+    typename configuration<Type_descriptor>::vector_type,
+    typename configuration<Type_descriptor>::vector_type
+  >;
 
   particle_bvh_tree(const qcl::device_context_ptr& ctx,
                     const std::vector<particle_type>& particles,
                     const Particle_sorter& sorter = Particle_sorter{})
-    : _ctx{ctx},
-      _num_particles{particles.size()}
+    : base_type{ctx, particles, sorter}
   {
-    _ctx->create_buffer<particle_type>(this->_sorted_particles, particles.size());
-    _ctx->memcpy_h2d(this->_sorted_particles, particles.data(), particles.size());
-
-    this->init_bvh_tree(sorter);
+    this->rebuild_bounding_boxes();
   }
 
   particle_bvh_tree(const qcl::device_context_ptr& ctx,
                     const cl::Buffer& particles,
                     std::size_t num_particles,
                     const Particle_sorter& sorter = Particle_sorter{})
-    : _ctx{ctx},
-      _sorted_particles{particles},
-      _num_particles{num_particles}
+    : base_type{ctx, particles, num_particles, sorter}
   {
-    this->init_bvh_tree(sorter);
+    this->rebuild_bounding_boxes();
   }
 
   particle_bvh_tree(const qcl::device_context_ptr& ctx,
                     const qcl::device_array<particle_type>& particles,
                     const Particle_sorter& sorter = Particle_sorter{})
-    : particle_bvh_tree{ctx, particles.get_buffer(), particles.size(), sorter}
-  {}
-
-  const cl::Buffer& get_bbox_min_corners() const
+    : base_type{ctx, particles, sorter}
   {
-    return this->_bb_min_corners.get_buffer();
+    this->rebuild_bounding_boxes();
   }
 
-  const cl::Buffer& get_bbox_max_corners() const
-  {
-    return this->_bb_max_corners.get_buffer();
-  }
-
-  std::size_t get_num_nodes() const
-  {
-    return this->_effective_num_particles-1;
-  }
-
-  std::size_t get_effective_num_levels() const
-  {
-    return this->_num_levels;
-  }
-
-  std::size_t get_num_node_levels() const
-  {
-    return get_effective_num_levels() - 1;
-  }
-
-  const cl::Buffer& get_sorted_particles() const
-  {
-    return this->_sorted_particles;
-  }
-
-  std::size_t get_num_particles() const
-  {
-    return this->_num_particles;
-  }
-
-  std::size_t get_effective_num_particles() const
-  {
-    return this->_effective_num_particles;
-  }
-
-  template<class Query_engine_type>
-  cl_int execute_query(Query_engine_type& engine,
-                       typename Query_engine_type::handler_type& handler,
-                       cl::Event* evt = nullptr) const
-  {
-    return engine( this->_ctx,
-                   this->_sorted_particles,
-                   this->_bb_min_corners.get_buffer(),
-                   this->_bb_max_corners.get_buffer(),
-                   this->_num_particles,
-                   this->_effective_num_particles,
-                   this->_num_levels,
-                   handler,
-                   evt);
-  }
-
+  virtual ~particle_bvh_tree(){}
 
   void rebuild_bounding_boxes()
   {
@@ -148,7 +92,7 @@ public:
     // Build the next layers. We start from num_levels-3, because num_levels-1 corresponds
     // to the particle layer, and num_levels-2 is the lowest node layer that was already
     // built by build_lowest_level_bboxes().
-    for(int i = static_cast<int>(_num_levels)-3; i >= 0; --i)
+    for(int i = static_cast<int>(this->get_effective_num_levels())-3; i >= 0; --i)
     {
 #ifndef NODEBUG
       std::cout << "Building level " << i << std::endl;
@@ -157,7 +101,52 @@ public:
     }
   }
 
+  const cl::Buffer& get_bbox_min_corners() const
+  {
+    return this->get_node_values0();
+  }
+
+  const cl::Buffer& get_bbox_max_corners() const
+  {
+    return this->get_node_values1();
+  }
+
 private:
+
+  static constexpr std::size_t local_size = 256;
+
+  void build_lowest_level_bboxes() const
+  {
+    cl::NDRange global_size {this->get_effective_num_particles()/2};
+    cl::NDRange local_size {this->local_size};
+
+    cl_int err = bvh_tree_build_ll_bbox(this->get_device_context(), global_size, local_size)(
+         this->get_sorted_particles(),
+         static_cast<cl_ulong>(this->get_num_particles()),
+         this->get_node_values0(),
+         this->get_node_values1());
+
+    qcl::check_cl_error(err, "Could not enqueue bvh_tree_build_ll_bbox kernel");
+  }
+
+  void build_higher_level_bboxes(unsigned level_id) const
+  {
+    assert(level_id < this->get_effective_num_levels());
+
+
+    cl::NDRange global_size {1ull << level_id};
+    cl::NDRange local_size {local_size};
+
+    cl_int err = bvh_tree_build_bbox(this->get_device_context(), global_size, local_size)(
+        this->get_node_values0(),
+        this->get_node_values1(),
+        static_cast<cl_uint>(level_id),
+        static_cast<cl_uint>(this->get_effective_num_levels()),
+        static_cast<cl_ulong>(this->get_num_particles()));
+
+    qcl::check_cl_error(err, "Could not enqueue bvh_tree_build_bbox kernel.");
+  }
+
   QCL_ENTRYPOINT(bvh_tree_build_ll_bbox)
   QCL_ENTRYPOINT(bvh_tree_build_bbox)
   QCL_MAKE_SOURCE
@@ -271,100 +260,8 @@ private:
       }
     )
   )
-
-  void init_bvh_tree(const Particle_sorter& sorter)
-  {
-    // First sort the particles spatially
-    sorter(_ctx, _sorted_particles, _num_particles);
-
-
-    // Build binary bvh tree on top of the sorted
-    // particles
-    // First, calculate the required number of levels
-    // and the effective number of particles
-    _effective_num_particles = get_next_power_of_two(_num_particles);
-    _num_levels = get_highest_set_bit(_effective_num_particles)+1;
-#ifndef NODEBUG
-    std::cout << "Building tree with "
-              << _num_levels << " levels over "
-              << _effective_num_particles << " effective particles and "
-              << _num_particles << " real particles." << std::endl;
-#endif
-    _bb_min_corners = qcl::device_array<vector_type>{_ctx, this->_effective_num_particles};
-    _bb_max_corners = qcl::device_array<vector_type>{_ctx, this->_effective_num_particles};
-
-    this->rebuild_bounding_boxes();
-  }
-
-  static unsigned get_highest_set_bit(uint64_t x)
-  {
-    unsigned result = 0;
-
-    for(int i = 0; i < 64; ++i)
-      if(x & (1ull << i))
-        result = i;
-
-    return result;
-  }
-
-  static uint64_t get_next_power_of_two(uint64_t x)
-  {
-    x--;
-    x |= x >> 1;
-    x |= x >> 2;
-    x |= x >> 4;
-    x |= x >> 8;
-    x |= x >> 16;
-    x |= x >> 32;
-    x++;
-
-    return x;
-  }
-
-  void build_lowest_level_bboxes() const
-  {
-    cl::NDRange global_size {_effective_num_particles/2};
-    cl::NDRange local_size {_local_size};
-
-    cl_int err = bvh_tree_build_ll_bbox(_ctx, global_size, local_size)(_sorted_particles,
-                                                                       static_cast<cl_ulong>(_num_particles),
-                                                                       _bb_min_corners,
-                                                                       _bb_max_corners);
-
-    qcl::check_cl_error(err, "Could not enqueue bvh_tree_build_ll_bbox kernel");
-  }
-
-  void build_higher_level_bboxes(unsigned level_id) const
-  {
-    assert(level_id < _num_levels);
-
-
-    cl::NDRange global_size {1ull << level_id};
-    cl::NDRange local_size {_local_size};
-
-    cl_int err = bvh_tree_build_bbox(_ctx, global_size, local_size)(_bb_min_corners,
-                                                                    _bb_max_corners,
-                                                                    static_cast<cl_uint>(level_id),
-                                                                    static_cast<cl_uint>(_num_levels),
-                                                                    static_cast<cl_ulong>(_num_particles));
-
-    qcl::check_cl_error(err, "Could not enqueue bvh_tree_build_bbox kernel.");
-  }
-
-  qcl::device_context_ptr _ctx;
-
-  cl::Buffer _sorted_particles;
-
-  qcl::device_array<vector_type> _bb_min_corners;
-  qcl::device_array<vector_type> _bb_max_corners;
-
-  unsigned _num_levels;
-
-  std::size_t _num_particles;
-  std::size_t _effective_num_particles;
-
-  static constexpr std::size_t _local_size = 256;
 };
+
 
 }
 #endif

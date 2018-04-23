@@ -39,26 +39,26 @@
 namespace spatialcl {
 namespace query {
 
-template<class Type_descriptor, class Handler>
+template<class Tree_type, class Handler>
 using strict_dfs_query_engine = query::engine::depth_first
   <
-    Type_descriptor,
+    Tree_type,
     Handler,
     engine::HIERARCHICAL_ITERATION_STRICT
   >;
 
-template<class Type_descriptor, class Handler>
+template<class Tree_type, class Handler>
 using relaxed_dfs_query_engine = query::engine::depth_first
   <
-    Type_descriptor,
+    Tree_type,
     Handler,
     engine::HIERARCHICAL_ITERATION_RELAXED
   >;
 
-template<class Type_descriptor, class Handler, std::size_t Group_size = 64>
+template<class Tree_type, class Handler, std::size_t Group_size = 64>
 using grouped_dfs_query_engine = query::engine::grouped_depth_first
   <
-    Type_descriptor,
+    Tree_type,
     Handler,
     Group_size
   >;
@@ -67,87 +67,87 @@ using grouped_dfs_query_engine = query::engine::grouped_depth_first
 
 /************** Range Queries ***************************/
 
-template<class Type_descriptor, std::size_t Max_retrieved_particles>
+template<class Tree_type, std::size_t Max_retrieved_particles>
 using strict_dfs_range_query_engine = strict_dfs_query_engine
   <
-    Type_descriptor,
-    box_range_query<Type_descriptor, Max_retrieved_particles>
+    Tree_type,
+    box_range_query<typename Tree_type::type_system, Max_retrieved_particles>
   >;
 
-template<class Type_descriptor, std::size_t Max_retrieved_particles>
+template<class Tree_type, std::size_t Max_retrieved_particles>
 using relaxed_dfs_range_query_engine = relaxed_dfs_query_engine
   <
-    Type_descriptor,
-    box_range_query<Type_descriptor, Max_retrieved_particles>
+    Tree_type,
+    box_range_query<typename Tree_type::type_system, Max_retrieved_particles>
   >;
 
 
-template<class Type_descriptor, std::size_t Max_retrieved_particles>
+template<class Tree_type, std::size_t Max_retrieved_particles>
 using register_bfs_range_query_engine =
   query::engine::register_breadth_first
   <
-    Type_descriptor,
-    box_range_query<Type_descriptor, Max_retrieved_particles>,
+    Tree_type,
+    box_range_query<typename Tree_type::type_system, Max_retrieved_particles>,
     Max_retrieved_particles
   >;
 
-template<class Type_descriptor, 
+template<class Tree_type,
          std::size_t Max_retrieved_particles,
          std::size_t Group_size = 64>
 using grouped_dfs_range_query_engine = grouped_dfs_query_engine
   <
-    Type_descriptor,
-    box_range_query<Type_descriptor, Max_retrieved_particles>,
+    Tree_type,
+    box_range_query<typename Tree_type::type_system, Max_retrieved_particles>,
     Group_size
   >;
 
-template<class Type_descriptor, std::size_t Max_retrieved_particles>
+template<class Tree_type, std::size_t Max_retrieved_particles>
 using default_range_query_engine = relaxed_dfs_range_query_engine
   <
-    Type_descriptor,
+    Tree_type,
     Max_retrieved_particles
   >;
 
 
 /********** KNN Queries ********************************/
 
-template<class Type_descriptor, std::size_t K>
+template<class Tree_type, std::size_t K>
 using strict_dfs_knn_query_engine = strict_dfs_query_engine
   <
-    Type_descriptor,
-    knn_query<Type_descriptor, K>
+    Tree_type,
+    knn_query<typename Tree_type::type_system, K>
   >;
 
-template<class Type_descriptor, std::size_t K>
+template<class Tree_type, std::size_t K>
 using relaxed_dfs_knn_query_engine = relaxed_dfs_query_engine
   <
-    Type_descriptor,
-    knn_query<Type_descriptor, K>
+    Tree_type,
+    knn_query<typename Tree_type::type_system, K>
   >;
 
-template<class Type_descriptor, std::size_t K>
+template<class Tree_type, std::size_t K>
 using register_bfs_knn_query_engine =
   query::engine::register_breadth_first
   <
-    Type_descriptor,
-    knn_query<Type_descriptor, K>,
+    Tree_type,
+    knn_query<typename Tree_type::type_system, K>,
     K
   >;
 
-template<class Type_descriptor, 
+template<class Tree_type,
          std::size_t K,
          std::size_t Group_size = 64>
 using grouped_dfs_knn_query_engine = grouped_dfs_query_engine
   <
-    Type_descriptor,
-    knn_query<Type_descriptor, K>,
+    Tree_type,
+    knn_query<typename Tree_type::type_system, K>,
     Group_size
   >;
 
-template<class Type_descriptor, std::size_t K>
+template<class Tree_type, std::size_t K>
 using default_knn_query_engine = register_bfs_knn_query_engine
   <
-    Type_descriptor,
+    Tree_type,
     K
   >;
 

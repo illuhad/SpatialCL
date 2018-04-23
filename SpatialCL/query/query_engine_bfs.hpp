@@ -46,7 +46,7 @@ namespace engine {
 /// for queries where the number of investigated nodes
 /// per level is known to be small enough to fit in the
 /// GPU's registers.
-template<class Type_descriptor,
+template<class Tree_type,
          class Handler_module,
          std::size_t Max_selected_nodes>
 class register_breadth_first
@@ -57,16 +57,33 @@ public:
   static constexpr std::size_t group_size = 256;
 
   using handler_type = Handler_module;
+  using type_system = typename Tree_type::type_system;
 
-  cl_int operator()(const qcl::device_context_ptr& ctx,
-                    const cl::Buffer& particles,
-                    const cl::Buffer& bbox_min_corner,
-                    const cl::Buffer& bbox_max_corner,
-                    std::size_t num_particles,
-                    std::size_t effective_num_particles,
-                    std::size_t effective_num_levels,
+  /// Execute query
+  cl_int operator()(const Tree_type& tree,
                     Handler_module& handler,
                     cl::Event* evt = nullptr)
+  {
+    return this->run(tree.get_device_context(),
+                     tree.get_sorted_particles(),
+                     tree.get_node_values0(),
+                     tree.get_node_values1(),
+                     tree.get_num_particles(),
+                     tree.get_effective_num_particles(),
+                     tree.get_effective_num_levels(),
+                     handler,
+                     evt);
+  }
+private:
+  cl_int run(const qcl::device_context_ptr& ctx,
+             const cl::Buffer& particles,
+             const cl::Buffer& bbox_min_corner,
+             const cl::Buffer& bbox_max_corner,
+             std::size_t num_particles,
+             std::size_t effective_num_particles,
+             std::size_t effective_num_levels,
+             Handler_module& handler,
+             cl::Event* evt = nullptr)
   {
     qcl::kernel_call call = query(ctx,
                                   cl::NDRange{handler.get_num_independent_queries()},
@@ -84,10 +101,9 @@ public:
     return call.enqueue_kernel();
   }
 
-private:
   QCL_ENTRYPOINT(query)
   QCL_MAKE_SOURCE(
-    QCL_INCLUDE_MODULE(configuration<Type_descriptor>)
+    QCL_INCLUDE_MODULE(configuration<type_system>)
     QCL_INCLUDE_MODULE(Handler_module)
     QCL_INCLUDE_MODULE(binary_tree)
     QCL_INCLUDE_MODULE(cl_utils::debug)

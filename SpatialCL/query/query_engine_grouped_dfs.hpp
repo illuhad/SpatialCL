@@ -62,7 +62,7 @@ namespace engine {
 /// local memory based algorithm if enough time is spent at the particle level.
 ///
 /// This query engine satisfies the DFS query engine interface concept.
-/// \tparam Type_descriptor The type system
+/// \tparam Tree_type The tree type
 /// \tparam Handler_module The query handler. Must satisfy the DFS concept.
 /// \tparam group_size The work group size
 /// \tparam subgroup_size The number of adjacent work items that share data
@@ -80,10 +80,10 @@ namespace engine {
 /// remove explicit synchronization (e.g. barrier()) calls if the synchronization
 /// is among that many work items. On nvidia GPUs, this should equal the warp size
 /// (typically 32), on AMD GPUs it should equal the wavefront size (typically 64).
-template<class Type_descriptor,
+template<class Tree_type,
          class Handler_module,
          std::size_t group_size = 64,
-         std::size_t subgroup_size = group_size,
+         std::size_t subgroup_size = 8,
          std::size_t node_batch_load_size = 8,
          std::size_t particle_batch_load_size = 8,
          std::size_t group_coherence_size = 32,
@@ -95,12 +95,12 @@ class grouped_depth_first
 public:
   QCL_MAKE_MODULE(grouped_depth_first)
 
-
+  using type_system = typename Tree_type::type_system;
   using handler_type = Handler_module;
   using particle_type = 
-      typename configuration<Type_descriptor>::particle_type;
+      typename configuration<type_system>::particle_type;
   using vector_type =
-      typename configuration<Type_descriptor>::vector_type;
+      typename configuration<type_system>::vector_type;
 
   static_assert(group_size > 0, "group size must be > 0");
   static_assert(node_batch_load_size > 0, "node_batch_load_size must be > 0");
@@ -149,17 +149,33 @@ public:
                 subgroup_size >= particle_batch_load_size,
                 "Currently, the subgroup size cannot be smaller than the batch load size");
 
-  
   /// Execute query
-  cl_int operator()(const qcl::device_context_ptr& ctx,
-                    const cl::Buffer& particles,
-                    const cl::Buffer& bbox_min_corner,
-                    const cl::Buffer& bbox_max_corner,
-                    std::size_t num_particles,
-                    std::size_t effective_num_particles,
-                    std::size_t effective_num_levels,
+  cl_int operator()(const Tree_type& tree,
                     Handler_module& handler,
                     cl::Event* evt = nullptr)
+  {
+    return this->run(tree.get_device_context(),
+                     tree.get_sorted_particles(),
+                     tree.get_node_values0(),
+                     tree.get_node_values1(),
+                     tree.get_num_particles(),
+                     tree.get_effective_num_particles(),
+                     tree.get_effective_num_levels(),
+                     handler,
+                     evt);
+  }
+
+
+private:
+  cl_int run(const qcl::device_context_ptr& ctx,
+             const cl::Buffer& particles,
+             const cl::Buffer& bbox_min_corner,
+             const cl::Buffer& bbox_max_corner,
+             std::size_t num_particles,
+             std::size_t effective_num_particles,
+             std::size_t effective_num_levels,
+             Handler_module& handler,
+             cl::Event* evt = nullptr)
   {
     qcl::kernel_call call = query(ctx,
                                   cl::NDRange{handler.get_num_independent_queries()},
@@ -178,7 +194,6 @@ public:
     return call.enqueue_kernel();
   }
 
-private:
   // In C++11, std::max is not constexpr (fixed in C++14).
   // We use the following workaround:
   template<class T>
@@ -199,7 +214,7 @@ private:
 
   QCL_ENTRYPOINT(query)
   QCL_MAKE_SOURCE(
-    QCL_INCLUDE_MODULE(configuration<Type_descriptor>)
+    QCL_INCLUDE_MODULE(configuration<type_system>)
     QCL_INCLUDE_MODULE(Handler_module)
     QCL_INCLUDE_MODULE(binary_tree)
     QCL_IMPORT_CONSTANT(group_size)
@@ -249,6 +264,7 @@ private:
         fast_barrier(CLK_LOCAL_MEM_FENCE);
         return result;
       }
+
     )
     QCL_PREPROCESSOR(define, get_query_id() tid)
     QCL_PREPROCESSOR(define,
@@ -283,6 +299,7 @@ private:
           for(int i = 0; i < num_available_particles; ++i)
           {
             int particle_selected = 0;
+
             dfs_particle_processor(&particle_selected,
                                    (particle_idx_begin + i),
                                    subgroup_particle_cache[i]);
@@ -369,7 +386,7 @@ private:
         // cache and check if nodes should be selected.
         if(tid < get_num_queries())
         {
-//#pragma unroll node_batch_load_size
+$pragma{ unroll node_batch_load_size}
           for(int i = 0; i < num_available_nodes; ++i)
           {
             int node_selected = 0;
@@ -381,7 +398,6 @@ private:
                               (node_idx_begin + i),
                               bbox_min_corner_cache[i],
                               bbox_max_corner_cache[i]);
-
 
             // If the query has decided to select some nodes,
             // mark this work item as having selected nodes
@@ -459,11 +475,14 @@ private:
         // using particle_type guarantees correct alignment.
         __local particle_type cache [total_cache_size];
 
+        //__local float cache[subgroup_size * 8 * num_subgroups];
+
         const int subgroup_id = get_local_id(0) / subgroup_size;
         const int subgroup_lid = get_local_id(0) % subgroup_size;
 
         volatile __local particle_type* const subgroup_cache =
                   cache + subgroup_id * subgroup_cache_size;
+        //volatile __local float* const subgroup_cache = cache + subgroup_id*subgroup_size*8;
         volatile __local int* const subgroup_node_selection_map =
                   node_selection_map + subgroup_id * subgroup_size;
 

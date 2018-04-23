@@ -58,21 +58,21 @@ using scalar = type_system::scalar;
 
 // Define queries
 using strict_dfs_range_engine =
-  spatialcl::query::strict_dfs_range_query_engine<type_system,
+  spatialcl::query::strict_dfs_range_query_engine<tree_type,
                                                   max_retrieved_particles>;
 
 using relaxed_dfs_range_engine =
-  spatialcl::query::relaxed_dfs_range_query_engine<type_system,
+  spatialcl::query::relaxed_dfs_range_query_engine<tree_type,
                                                   max_retrieved_particles>;
 
 template<std::size_t Group_size>
 using grouped_dfs_range_engine =
-  spatialcl::query::grouped_dfs_range_query_engine<type_system,
+  spatialcl::query::grouped_dfs_range_query_engine<tree_type,
                                                     max_retrieved_particles,
                                                     Group_size>;
 
 using register_bfs_range_engine =
-  spatialcl::query::register_bfs_range_query_engine<type_system,
+  spatialcl::query::register_bfs_range_query_engine<tree_type,
                                                     max_retrieved_particles>;
 
 
@@ -102,7 +102,7 @@ void run_benchmark(const std::string& name,
   common::timer t;
   // Execute the query once before measuring to make sure
   // we do not take into account kernel compilation times.
-  tree.execute_query(query_engine, query_handler);
+  query_engine(tree, query_handler);
 
   cl_int err = ctx->get_command_queue().finish();
   qcl::check_cl_error(err, "Error while executing range query");
@@ -110,7 +110,7 @@ void run_benchmark(const std::string& name,
   t.start();
   for (std::size_t run = 0; run < num_runs; ++run)
   {
-    tree.execute_query(query_engine, query_handler);
+    query_engine(tree, query_handler);
 
     err = ctx->get_command_queue().finish();
     qcl::check_cl_error(err, "Error while executing range query");

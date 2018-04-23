@@ -46,7 +46,7 @@ enum depth_first_iteration_strategy
   HIERARCHICAL_ITERATION_RELAXED = 1
 };
 
-template<class Type_descriptor,
+template<class Tree_type,
          class Handler_module,
          depth_first_iteration_strategy Iteration_strategy,
          std::size_t group_size = 256>
@@ -56,16 +56,33 @@ public:
   QCL_MAKE_MODULE(depth_first)
 
   using handler_type = Handler_module;
+  using type_system = typename Tree_type::type_system;
 
-  cl_int operator()(const qcl::device_context_ptr& ctx,
-                    const cl::Buffer& particles,
-                    const cl::Buffer& bbox_min_corner,
-                    const cl::Buffer& bbox_max_corner,
-                    std::size_t num_particles,
-                    std::size_t effective_num_particles,
-                    std::size_t effective_num_levels,
+  /// Execute query
+  cl_int operator()(const Tree_type& tree,
                     Handler_module& handler,
                     cl::Event* evt = nullptr)
+  {
+    return this->run(tree.get_device_context(),
+                     tree.get_sorted_particles(),
+                     tree.get_node_values0(),
+                     tree.get_node_values1(),
+                     tree.get_num_particles(),
+                     tree.get_effective_num_particles(),
+                     tree.get_effective_num_levels(),
+                     handler,
+                     evt);
+  }
+private:
+  cl_int run(const qcl::device_context_ptr& ctx,
+             const cl::Buffer& particles,
+             const cl::Buffer& bbox_min_corner,
+             const cl::Buffer& bbox_max_corner,
+             std::size_t num_particles,
+             std::size_t effective_num_particles,
+             std::size_t effective_num_levels,
+             Handler_module& handler,
+             cl::Event* evt = nullptr)
   {
     qcl::kernel_call call = query(ctx,
                                   cl::NDRange{handler.get_num_independent_queries()},
@@ -83,10 +100,9 @@ public:
     return call.enqueue_kernel();
   }
 
-private:
   QCL_ENTRYPOINT(query)
   QCL_MAKE_SOURCE(
-    QCL_INCLUDE_MODULE(configuration<Type_descriptor>)
+    QCL_INCLUDE_MODULE(configuration<type_system>)
     QCL_INCLUDE_MODULE(Handler_module)
     QCL_INCLUDE_MODULE(binary_tree)
     QCL_IMPORT_CONSTANT(Iteration_strategy)

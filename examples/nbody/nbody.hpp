@@ -306,7 +306,7 @@ public:
     using query_handler = nbody_query_handler<Scalar>;
     using query_engine =
       spatialcl::query::grouped_dfs_query_engine<
-        nbody_type_descriptor<Scalar>,
+        nbody_tree<Scalar>,
         query_handler,
         32
       >;
@@ -319,7 +319,7 @@ public:
       _acceleration.get_buffer()
     };
     // -- Execute query to obtain accelerations
-    cl_int err =_tree->get_tree_backend().execute_query(engine, handler);
+    cl_int err = engine(*_tree, handler);
     qcl::check_cl_error(err, "Error during tree query!");
 
     // Perform time integration

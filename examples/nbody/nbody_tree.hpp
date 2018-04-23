@@ -42,10 +42,27 @@
 namespace nbody {
 
 template<class Scalar>
-using nbody_type_descriptor = spatialcl::type_descriptor::generic<Scalar,3,8>;
+using nbody_type_descriptor = spatialcl::type_descriptor::generic<Scalar,3,4>;
 
 template<class Scalar>
-class nbody_tree
+using hilbert_sorter =
+  spatialcl::key_based_sorter<
+    spatialcl::hilbert_sort_key_generator<
+      nbody_type_descriptor<Scalar>
+    >
+  >;
+
+template<class Scalar>
+using nbody_basic_tree = spatialcl::particle_tree
+<
+  hilbert_sorter<Scalar>,
+  nbody_type_descriptor<Scalar>,
+  typename spatialcl::configuration<nbody_type_descriptor<Scalar>>::vector_type,
+  typename spatialcl::configuration<nbody_type_descriptor<Scalar>>::vector_type
+>;
+
+template<class Scalar>
+class nbody_tree : public nbody_basic_tree<Scalar>
 {
 public:
   QCL_MAKE_MODULE(nbody_tree)
@@ -56,62 +73,54 @@ public:
     typename spatialcl::configuration<nbody_type_descriptor<Scalar>>::vector_type;
 
 
-
-  using gpu_tree_type =
-          spatialcl::hilbert_bvh_tree<nbody_type_descriptor<Scalar>>;
-
   nbody_tree(const qcl::device_context_ptr& ctx,
              const qcl::device_array<particle_type>& particles)
-    : _ctx{ctx}, _tree{ctx, particles}
+      : nbody_basic_tree<Scalar>{ctx, particles}, _ctx{ctx}
   {
     // Need at least two particles for the tree
     assert(particles.size() > 2);
     this->init_multipoles();
   }
 
-  const gpu_tree_type& get_tree_backend() const
-  {
-    return _tree;
-  }
 private:
   void init_multipoles()
   {
     // First, calculate the diameter of each node and store in bbox max
     // corner.w
+    // TODO Fix this!! This is not correct anymore!
     cl_int err = this->store_bbox_diameter(_ctx,
-                                           cl::NDRange{_tree.get_num_nodes()},
+                                           cl::NDRange{this->get_num_nodes()},
                                            cl::NDRange{256})
-        (_tree.get_bbox_min_corners(),
-         _tree.get_bbox_max_corners(),
-         static_cast<cl_ulong>(_tree.get_num_nodes()));
+        (this->get_node_values0(),
+         this->get_node_values1(),
+         static_cast<cl_ulong>(this->get_num_nodes()));
 
     qcl::check_cl_error(err, "Could not enqueue store_bbox_diameter kernel");
 
-    assert(_tree.get_num_node_levels() > 0);
-    // Build monopoles for lowest level. We abuse the min bbox corner
-    // for this, as we do not need it for the nbody tree walk
+    assert(this->get_num_node_levels() > 0);
+    // Build monopoles for lowest level.
 
     // First, build lowest level
     err = this->build_ll_monopoles(_ctx,
-                                   cl::NDRange{_tree.get_num_particles()},
+                                   cl::NDRange{this->get_num_particles()},
                                    cl::NDRange{256})
-        (_tree.get_bbox_min_corners(),
-         _tree.get_sorted_particles(),
-         static_cast<cl_ulong>(_tree.get_num_particles()));
+        (this->get_node_values0(),
+         this->get_sorted_particles(),
+         static_cast<cl_ulong>(this->get_num_particles()));
 
     qcl::check_cl_error(err, "Could not enqueue build_ll_monopoles kernel");
 
-    for(int level = _tree.get_num_node_levels()-2; level >= 0; --level)
+    for(int level = this->get_num_node_levels()-2; level >= 0; --level)
     {
       // Build higher levels
       err = this->build_monopoles(_ctx,
                                   cl::NDRange{1ul << level},
                                   cl::NDRange{256})
-          (_tree.get_bbox_min_corners(),
+          (this->get_node_values0(),
            static_cast<cl_uint>(level),
-           static_cast<cl_ulong>(_tree.get_num_particles()),
-           static_cast<cl_ulong>(_tree.get_effective_num_particles()),
-           static_cast<cl_ulong>(_tree.get_effective_num_levels()));
+           static_cast<cl_ulong>(this->get_num_particles()),
+           static_cast<cl_ulong>(this->get_effective_num_particles()),
+           static_cast<cl_ulong>(this->get_effective_num_levels()));
       qcl::check_cl_error(err, "Could not enqueue build_monopoles kernel");
     }
     err = _ctx->get_command_queue().finish();
@@ -119,7 +128,7 @@ private:
   }
 
   qcl::device_context_ptr _ctx;
-  gpu_tree_type _tree;
+
 
   QCL_ENTRYPOINT(build_ll_monopoles)
   QCL_ENTRYPOINT(build_monopoles)

@@ -56,17 +56,17 @@ using vector_type = spatialcl::configuration<type_system>::vector_type;
 constexpr std::size_t dimension = type_system::dimension;
 
 using strict_dfs_knn_engine =
-  spatialcl::query::strict_dfs_knn_query_engine<type_system, K>;
+  spatialcl::query::strict_dfs_knn_query_engine<tree_type, K>;
 
 using relaxed_dfs_knn_engine =
-  spatialcl::query::relaxed_dfs_knn_query_engine<type_system, K>;
+  spatialcl::query::relaxed_dfs_knn_query_engine<tree_type, K>;
 
 using register_bfs_knn_engine =
-  spatialcl::query::register_bfs_knn_query_engine<type_system, K>;
+  spatialcl::query::register_bfs_knn_query_engine<tree_type, K>;
 
 template <std::size_t Group_size>
 using grouped_dfs_knn_engine =
-  spatialcl::query::grouped_dfs_knn_query_engine<type_system, K, Group_size>;
+  spatialcl::query::grouped_dfs_knn_query_engine<tree_type, K, Group_size>;
 
 template<class Query_engine>
 std::size_t execute_knn_query_test(const qcl::device_context_ptr& ctx,
@@ -87,7 +87,7 @@ std::size_t execute_knn_query_test(const qcl::device_context_ptr& ctx,
 
   std::cout << "Executing query..." << std::endl;
   // Executy query
-  tree.execute_query(query_engine, query_handler);
+  query_engine(tree, query_handler);
 
   cl_int err = ctx->get_command_queue().finish();
   qcl::check_cl_error(err, "Error while executing KNN query");

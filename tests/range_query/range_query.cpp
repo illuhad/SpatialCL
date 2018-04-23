@@ -55,21 +55,21 @@ constexpr scalar query_diameter = 0.05f;
 
 // Define queries
 using strict_dfs_range_engine =
-  spatialcl::query::strict_dfs_range_query_engine<type_system,
+  spatialcl::query::strict_dfs_range_query_engine<tree_type,
                                                   max_retrieved_particles>;
 
 using relaxed_dfs_range_engine =
-  spatialcl::query::relaxed_dfs_range_query_engine<type_system,
+  spatialcl::query::relaxed_dfs_range_query_engine<tree_type,
                                                   max_retrieved_particles>;
 
 template<std::size_t Group_size>
 using grouped_dfs_range_engine =
-  spatialcl::query::grouped_dfs_range_query_engine<type_system,
+  spatialcl::query::grouped_dfs_range_query_engine<tree_type,
                                                     max_retrieved_particles,
                                                     Group_size>;
 
 using register_bfs_range_engine =
-  spatialcl::query::register_bfs_range_query_engine<type_system,
+  spatialcl::query::register_bfs_range_query_engine<tree_type,
                                                     max_retrieved_particles>;
 
 
@@ -100,7 +100,7 @@ std::size_t execute_range_query_test(const qcl::device_context_ptr& ctx,
 
   std::cout << "Executing query..." << std::endl;
 
-  tree.execute_query(query_engine, query_handler);
+  query_engine(tree, query_handler);
 
   cl_int err = ctx->get_command_queue().finish();
   qcl::check_cl_error(err, "Error while executing range query");
@@ -184,7 +184,7 @@ int main()
 
   RUN_TEST(strict_dfs_range_engine);
   RUN_TEST(relaxed_dfs_range_engine);
-  RUN_TEST(grouped_dfs_range_engine<16>);
+  //RUN_TEST(grouped_dfs_range_engine<16>);
   RUN_TEST(grouped_dfs_range_engine<32>);
   RUN_TEST(grouped_dfs_range_engine<64>);
   RUN_TEST(register_bfs_range_engine);
