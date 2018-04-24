@@ -61,9 +61,6 @@ using strict_dfs_knn_engine =
 using relaxed_dfs_knn_engine =
   spatialcl::query::relaxed_dfs_knn_query_engine<tree_type, K>;
 
-using register_bfs_knn_engine =
-  spatialcl::query::register_bfs_knn_query_engine<tree_type, K>;
-
 template <std::size_t Group_size>
 using grouped_dfs_knn_engine =
   spatialcl::query::grouped_dfs_knn_query_engine<tree_type, K, Group_size>;
@@ -141,7 +138,6 @@ int main(int argc, char* argv[])
   RUN_TEST(grouped_dfs_knn_engine<16>);
   RUN_TEST(grouped_dfs_knn_engine<32>);
   RUN_TEST(grouped_dfs_knn_engine<64>);
-  RUN_TEST(register_bfs_knn_engine);
 
   return 0;
 }

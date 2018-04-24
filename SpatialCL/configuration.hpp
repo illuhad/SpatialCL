@@ -94,10 +94,12 @@ private:
       #define PARTICLE_POSITION(p) p.s01
       #define CONVERT_VECTOR_TO_CELL_INDEX(v) convert_uint2(v)
       #define VECTOR_NORM2(v) dot(v,v)
+      #define CLIP_TO_VECTOR(v) ((v).xy)
      #elif dimension == 3
       #define PARTICLE_POSITION(p) p.s0123
       #define CONVERT_VECTOR_TO_CELL_INDEX(v) convert_uint4(v)
       #define VECTOR_NORM2(v) dot((v).s012, (v).s012)
+      #define CLIP_TO_VECTOR(v) ((v).xyzw)
      #else
       #error Invalid dimension, only 2d and 3d is supported.
      #endif
@@ -111,6 +113,25 @@ private:
      #endif
 
     )"
+  )
+};
+
+template<class Tree_type>
+class tree_configuration
+{
+public:
+  QCL_MAKE_MODULE(tree_configuration)
+
+  using type_system = typename Tree_type::type_system;
+  using node_type0 = typename Tree_type::node_type0;
+  using node_type1 = typename Tree_type::node_type1;
+
+private:
+  QCL_MAKE_SOURCE(
+    QCL_INCLUDE_MODULE(configuration<type_system>)
+    QCL_IMPORT_TYPE(node_type0)
+    QCL_IMPORT_TYPE(node_type1)
+    QCL_RAW()
   )
 };
 

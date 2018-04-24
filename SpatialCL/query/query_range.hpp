@@ -94,8 +94,8 @@ private:
                         bbox_min_corner,
                         bbox_max_corner)
         *selection_result_ptr = box_box_intersection(
-                                      bbox_min_corner,
-                                      bbox_max_corner,
+                                      CLIP_TO_VECTOR(bbox_min_corner),
+                                      CLIP_TO_VECTOR(bbox_max_corner),
                                       query_range_min,
                                       query_range_max);
     )
@@ -123,44 +123,6 @@ private:
       dfs_unique_node_discard_event(node_idx,
                                     current_bbox_min_corner,
                                     current_bbox_max_corner)
-    )
-    QCL_PREPROCESSOR(define,
-      bfs_node_selector(max_selectable_nodes,
-                        num_available_nodes)
-      {
-        for(uint k = 0; k < num_available_nodes; ++k)
-        {
-          bfs_load_node(k);
-
-          vector_type bbox_min = bfs_get_node_min_corner();
-          vector_type bbox_max = bfs_get_node_max_corner();
-
-          if(box_box_intersection(bbox_min, bbox_max,
-                                  query_range_min, query_range_max))
-            bfs_select(k);
-
-        }
-      }
-    )
-    QCL_PREPROCESSOR(define,
-      bfs_particle_processor(num_available_particles)
-      {
-        for(uint k = 0; k < num_available_particles; ++k)
-        {
-          particle_type p = bfs_load_particle(k);
-
-          if(box_contains_particle(query_range_min,
-                                   query_range_max,
-                                   p)
-             && (num_selected_particles < Max_retrieved_particles))
-          {
-            ulong result_pos = get_query_id()*Max_retrieved_particles
-                             + num_selected_particles;
-            query_result[result_pos] = p;
-            ++num_selected_particles;
-          }
-        }
-      }
     )
     R"(
       #define declare_full_query_parameter_set() \

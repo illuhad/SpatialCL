@@ -68,10 +68,6 @@ using grouped_dfs_range_engine =
                                                     max_retrieved_particles,
                                                     Group_size>;
 
-using register_bfs_range_engine =
-  spatialcl::query::register_bfs_range_query_engine<tree_type,
-                                                    max_retrieved_particles>;
-
 
 using particle_type = spatialcl::configuration<type_system>::particle_type;
 using vector_type = spatialcl::configuration<type_system>::vector_type;
@@ -187,7 +183,6 @@ int main()
   //RUN_TEST(grouped_dfs_range_engine<16>);
   RUN_TEST(grouped_dfs_range_engine<32>);
   RUN_TEST(grouped_dfs_range_engine<64>);
-  RUN_TEST(register_bfs_range_engine);
  
   return 0;
 }

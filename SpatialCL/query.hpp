@@ -30,7 +30,6 @@
 #define QUERY_HPP
 
 #include "query/query_engine_dfs.hpp"
-#include "query/query_engine_bfs.hpp"
 #include "query/query_engine_grouped_dfs.hpp"
 
 #include "query/query_knn.hpp"
@@ -81,16 +80,6 @@ using relaxed_dfs_range_query_engine = relaxed_dfs_query_engine
     box_range_query<typename Tree_type::type_system, Max_retrieved_particles>
   >;
 
-
-template<class Tree_type, std::size_t Max_retrieved_particles>
-using register_bfs_range_query_engine =
-  query::engine::register_breadth_first
-  <
-    Tree_type,
-    box_range_query<typename Tree_type::type_system, Max_retrieved_particles>,
-    Max_retrieved_particles
-  >;
-
 template<class Tree_type,
          std::size_t Max_retrieved_particles,
          std::size_t Group_size = 64>
@@ -125,15 +114,6 @@ using relaxed_dfs_knn_query_engine = relaxed_dfs_query_engine
     knn_query<typename Tree_type::type_system, K>
   >;
 
-template<class Tree_type, std::size_t K>
-using register_bfs_knn_query_engine =
-  query::engine::register_breadth_first
-  <
-    Tree_type,
-    knn_query<typename Tree_type::type_system, K>,
-    K
-  >;
-
 template<class Tree_type,
          std::size_t K,
          std::size_t Group_size = 64>
@@ -145,7 +125,7 @@ using grouped_dfs_knn_query_engine = grouped_dfs_query_engine
   >;
 
 template<class Tree_type, std::size_t K>
-using default_knn_query_engine = register_bfs_knn_query_engine
+using default_knn_query_engine = relaxed_dfs_knn_query_engine
   <
     Tree_type,
     K

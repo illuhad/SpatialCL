@@ -120,99 +120,19 @@ private:
                         bbox_max_corner)
       {
         scalar dist2 = 0.0f;
-        if(!box_contains_particle(bbox_min_corner,
-                                  bbox_max_corner,
+        if(!box_contains_particle(CLIP_TO_VECTOR(bbox_min_corner),
+                                  CLIP_TO_VECTOR(bbox_max_corner),
                                   query_position))
         {
           dist2 = box_distance2(query_position,
-                                bbox_min_corner,
-                                bbox_max_corner);
+                                CLIP_TO_VECTOR(bbox_min_corner),
+                                CLIP_TO_VECTOR(bbox_max_corner));
         }
         
         *selection_result_ptr =
             dist2 < candidate_distances2[max_distance_idx];
       }
 
-    )
-    QCL_PREPROCESSOR(define,
-      bfs_node_selector(max_selectable_nodes,
-                        num_available_nodes)
-      {
-        uint selection_candidates [K];
-        for(uint k = 0; k < K; ++k)
-        {
-          // Clear candidate distances from remaining information
-          // from previous levels
-          candidate_distances2[k] = FLT_MAX;
-          selection_candidates[k] = INT_MAX;
-        }
-        max_distance_idx = 0;
-
-        for(uint k = 0; k < num_available_nodes; ++k)
-        {
-          // Access k-th candidate node
-          bfs_load_node(k);
-          // Load min and max corners of the node's box
-          vector_type bbox_min = bfs_get_node_min_corner();
-          vector_type bbox_max = bfs_get_node_max_corner();
-
-          // ToDo: This is possibly incorrect
-          scalar node_dist2 = 0.0f;
-          if(!box_contains_point(bbox_min, bbox_max, query_position))
-             node_dist2 = box_distance2(query_position,
-                                        bbox_min,
-                                        bbox_max);
-
-          NAMED_ASSERT("knn_query: max_distance_idx bounds",
-                       max_distance_idx < K);
-
-          if(node_dist2 < candidate_distances2[max_distance_idx])
-          {
-            // Make space by removing the node that is farthest
-            uint farthest_node = selection_candidates[max_distance_idx];
-            if(farthest_node != INT_MAX)
-              bfs_deselect(farthest_node);
-
-            // Overwrite worst node with the current node's distance
-            // and id
-            candidate_distances2[max_distance_idx] = node_dist2;
-            selection_candidates[max_distance_idx] = k;
-            // Mark current for investigation in the next level
-            bfs_select(k);
-
-            // Update which of the candidate nodes is now farthest
-            knn_update_max_distance(&max_distance_idx,
-                                    candidate_distances2);
-          }
-        }
-      }
-    )
-    QCL_PREPROCESSOR(define,
-      bfs_particle_processor(num_available_particles)
-      {
-        // Clear candidate distances from node levels
-        for(uint k = 0; k < K; ++k)
-          candidate_distances2[k] = FLT_MAX;
-
-        particle_type current_particle;
-        vector_type delta;
-        for(uint k = 0; k < num_available_particles; ++k)
-        {
-          current_particle = bfs_load_particle(k);
-
-          delta = PARTICLE_POSITION(current_particle) - query_position;
-          scalar dist2 = VECTOR_NORM2(delta);
-
-          if(dist2 < candidate_distances2[max_distance_idx])
-          {
-             knn_add_candidate_particle(current_particle,
-                                        dist2,
-                                        &max_distance_idx,
-                                        candidate_distances2,
-                                        candidates);
-          }
-        }
-      }
     )
     QCL_PREPROCESSOR(define,
       dfs_particle_processor(selection_result_ptr,

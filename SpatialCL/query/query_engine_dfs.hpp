@@ -76,8 +76,8 @@ public:
 private:
   cl_int run(const qcl::device_context_ptr& ctx,
              const cl::Buffer& particles,
-             const cl::Buffer& bbox_min_corner,
-             const cl::Buffer& bbox_max_corner,
+             const cl::Buffer& node_values0,
+             const cl::Buffer& node_values1,
              std::size_t num_particles,
              std::size_t effective_num_particles,
              std::size_t effective_num_levels,
@@ -90,8 +90,8 @@ private:
                                   evt);
 
     call.partial_argument_list(particles,
-                               bbox_min_corner,
-                               bbox_max_corner,
+                               node_values0,
+                               node_values1,
                                static_cast<cl_ulong>(num_particles),
                                static_cast<cl_ulong>(effective_num_particles),
                                static_cast<cl_ulong>(effective_num_levels));
