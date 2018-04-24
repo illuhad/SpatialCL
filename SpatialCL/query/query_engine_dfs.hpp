@@ -102,24 +102,24 @@ private:
 
   QCL_ENTRYPOINT(query)
   QCL_MAKE_SOURCE(
-    QCL_INCLUDE_MODULE(configuration<type_system>)
+    QCL_INCLUDE_MODULE(tree_configuration<Tree_type>)
     QCL_INCLUDE_MODULE(Handler_module)
     QCL_INCLUDE_MODULE(binary_tree)
     QCL_IMPORT_CONSTANT(Iteration_strategy)
     QCL_RAW(
         ulong load_node(binary_tree_key_t* node,
-                       __global vector_type* bbox_min_corner,
-                       __global vector_type* bbox_max_corner,
+                       __global node_type0* node_values0,
+                       __global node_type1* node_values1,
                        ulong effective_num_levels,
                        ulong effective_num_particles,
-                       vector_type* min_corner_out,
-                       vector_type* max_corner_out)
+                       node_type0* node_value0_out,
+                       node_type1* node_value1_out)
         {
           ulong idx = binary_tree_key_encode_global_id(node,effective_num_levels);
           idx -= effective_num_particles;
 
-          *min_corner_out = bbox_min_corner[idx];
-          *max_corner_out = bbox_max_corner[idx];
+          *node_value0_out = node_values0[idx];
+          *node_value1_out = node_values1[idx];
 
           return idx;
         }
@@ -159,30 +159,30 @@ private:
       )"
       QCL_PREPROCESSOR(define, get_query_id() tid)
       QCL_PREPROCESSOR(define,
-        QUERY_NODE_LEVEL(bbox_min_corner,
-                         bbox_max_corner,
+        QUERY_NODE_LEVEL(node_values0,
+                         node_values1,
                          effective_num_particles,
                          effective_num_levels,
                          current_node,
                          num_covered_particles)
         {
-          vector_type current_bbox_min_corner;
-          vector_type current_bbox_max_corner;
+          node_type0 current_node_values0;
+          node_type1 current_node_values1;
 
           ulong node_idx = load_node(&current_node,
-                                     bbox_min_corner,
-                                     bbox_max_corner,
+                                     node_values0,
+                                     node_values1,
                                      effective_num_levels,
                                      effective_num_particles,
-                                     &current_bbox_min_corner,
-                                     &current_bbox_max_corner);
+                                     &current_node_values0,
+                                     &current_node_values1);
 
           int node_selected = 0;
           dfs_node_selector(&node_selected,
                             &current_node,
                             node_idx,
-                            current_bbox_min_corner,
-                            current_bbox_max_corner);
+                            current_node_values0,
+                            current_node_values1);
           if(node_selected)
           {
             current_node = binary_tree_get_children_begin(&current_node);
@@ -190,8 +190,8 @@ private:
           else
           {
             dfs_unique_node_discard_event(node_idx,
-                                          current_bbox_min_corner,
-                                          current_bbox_max_corner);
+                                          current_node_values0,
+                                          current_node_values1);
 
             num_covered_particles += BT_LEAVES_PER_NODE(current_node.level,
                                                         effective_num_levels);
@@ -251,8 +251,8 @@ private:
       )
       QCL_RAW(
         __kernel void query(__global particle_type* particles,
-                            __global vector_type* bbox_min_corner,
-                            __global vector_type* bbox_max_corner,
+                            __global node_type0* node_values0,
+                            __global node_type1* node_values1,
                             ulong num_particles,
                             ulong effective_num_particles,
                             ulong effective_num_levels,
@@ -283,8 +283,8 @@ private:
               }
               else
               {
-                QUERY_NODE_LEVEL(bbox_min_corner,
-                                 bbox_max_corner,
+                QUERY_NODE_LEVEL(node_values0,
+                                 node_values1,
                                  effective_num_particles,
                                  effective_num_levels,
                                  current_node,
