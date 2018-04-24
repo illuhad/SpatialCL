@@ -386,7 +386,7 @@ private:
         // cache and check if nodes should be selected.
         if(tid < get_num_queries())
         {
-$pragma{ unroll node_batch_load_size}
+//$pragma{ unroll node_batch_load_size}
           for(int i = 0; i < num_available_nodes; ++i)
           {
             int node_selected = 0;

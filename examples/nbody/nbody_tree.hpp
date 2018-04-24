@@ -41,8 +41,10 @@
 
 namespace nbody {
 
+// We treat particles as having 8 components in order to save the particle
+// velocity directly with the particle
 template<class Scalar>
-using nbody_type_descriptor = spatialcl::type_descriptor::generic<Scalar,3,4>;
+using nbody_type_descriptor = spatialcl::type_descriptor::generic<Scalar,3,8>;
 
 template<class Scalar>
 using hilbert_sorter =
@@ -85,26 +87,15 @@ public:
 private:
   void init_multipoles()
   {
-    // First, calculate the diameter of each node and store in bbox max
-    // corner.w
-    // TODO Fix this!! This is not correct anymore!
-    cl_int err = this->store_bbox_diameter(_ctx,
-                                           cl::NDRange{this->get_num_nodes()},
-                                           cl::NDRange{256})
-        (this->get_node_values0(),
-         this->get_node_values1(),
-         static_cast<cl_ulong>(this->get_num_nodes()));
-
-    qcl::check_cl_error(err, "Could not enqueue store_bbox_diameter kernel");
-
     assert(this->get_num_node_levels() > 0);
     // Build monopoles for lowest level.
 
     // First, build lowest level
-    err = this->build_ll_monopoles(_ctx,
-                                   cl::NDRange{this->get_num_particles()},
-                                   cl::NDRange{256})
+    cl_int err = this->build_ll_monopoles(_ctx,
+                                          cl::NDRange{this->get_num_particles()},
+                                          cl::NDRange{256})
         (this->get_node_values0(),
+         this->get_node_values1(),
          this->get_sorted_particles(),
          static_cast<cl_ulong>(this->get_num_particles()));
 
@@ -117,6 +108,7 @@ private:
                                   cl::NDRange{1ul << level},
                                   cl::NDRange{256})
           (this->get_node_values0(),
+           this->get_node_values1(),
            static_cast<cl_uint>(level),
            static_cast<cl_ulong>(this->get_num_particles()),
            static_cast<cl_ulong>(this->get_effective_num_particles()),
@@ -137,27 +129,24 @@ private:
     QCL_INCLUDE_MODULE(spatialcl::configuration<nbody_type_descriptor<Scalar>>)
     QCL_INCLUDE_MODULE(spatialcl::binary_tree)
     QCL_RAW (
-      // Stores the mean bbox diameter in bbox_max_corners.w
-      __kernel void store_bbox_diameter(__global vector_type* bbox_min_corners,
-                                        __global vector_type* bbox_max_corners,
-                                        ulong num_nodes)
+      scalar get_node_diameter(vector_type center_of_mass,
+                               vector_type left_child_position,
+                               vector_type right_child_position,
+                               scalar left_child_diameter,
+                               scalar right_child_diameter)
       {
-        for(ulong tid = get_global_id(0);
-            tid < num_nodes;
-            tid += get_global_size(0))
-        {
-          vector_type bbox_min = bbox_min_corners[tid];
-          vector_type bbox_max = bbox_max_corners[tid];
+        vector_type d0 = left_child_position - center_of_mass;
+        vector_type d1 = right_child_position - center_of_mass;
+        scalar r0 = length(d0.xyz);
+        scalar r1 = length(d1.xyz);
 
-          vector_type delta = bbox_max - bbox_min;
-          scalar diameter = (delta.x + delta.y + delta.z) / 3.0f;
-
-          bbox_max_corners[tid].w = diameter;
-        }
+        return 2.0f * fmax(r0,r1) + 0.5f * (left_child_diameter + right_child_diameter);
       }
+
 
       // Build monopoles on lowest level
       __kernel void build_ll_monopoles(__global vector_type* monopoles,
+                                       __global vector_type* node_widths,
                                        __global particle_type* particles,
                                        ulong num_particles)
       {
@@ -184,11 +173,18 @@ private:
           monopole.xyz /= total_mass;
           monopole.w = total_mass;
 
+          vector_type node_extent;
+          node_extent.xyz = fabs(left_particle.xyz - right_particle.xyz);
+          node_extent.w = 0.33f * (node_extent.x + node_extent.y + node_extent.z);
+
+          node_widths[tid] = node_extent;
           monopoles[tid] = monopole;
+
         }
       }
       // Build monopoles on higher levels
       __kernel void build_monopoles(__global vector_type* monopoles,
+                                    __global vector_type* node_widths,
                                     uint current_level,
                                     ulong num_particles,
                                     ulong effective_num_particles,
@@ -214,17 +210,20 @@ private:
                                                               effective_num_levels,
                                                               num_particles);
 
-            ulong child_idx = binary_tree_key_encode_global_id(&children_begin,
-                                                               effective_num_levels);
+            ulong effective_child_idx = binary_tree_key_encode_global_id(&children_begin,
+                                                                         effective_num_levels)
+                                      - effective_num_particles;
 
-            vector_type left_child_monopole = monopoles[child_idx - effective_num_particles];
-            vector_type right_child_monopole = (vector_type)0.0f;
+            vector_type left_child_monopole = monopoles[effective_child_idx];
+            vector_type right_child_monopole = left_child_monopole;
+
+            vector_type left_child_node_extent = node_widths[effective_child_idx];
+            vector_type right_child_node_extent = (vector_type)0.0f;
 
             if(right_child_exists)
             {
-              child_idx = binary_tree_key_encode_global_id(&children_last,
-                                                           effective_num_levels);
-              right_child_monopole = monopoles[child_idx - effective_num_particles];
+              right_child_monopole   = monopoles[effective_child_idx + 1];
+              right_child_node_extent = node_widths[effective_child_idx + 1];
             }
             scalar left_mass = left_child_monopole.w;
             scalar right_mass = right_child_monopole.w;
@@ -236,10 +235,21 @@ private:
             // Set total mass
             parent_monopole.w = total_mass;
 
-            ulong node_idx = binary_tree_key_encode_global_id(&node_key,
-                                                              effective_num_levels);
+            ulong effective_node_idx = binary_tree_key_encode_global_id(&node_key,
+                                                                        effective_num_levels)
+                                     - effective_num_particles;
             // Set result
-            monopoles[node_idx - effective_num_particles] = parent_monopole;
+            monopoles[effective_node_idx] = parent_monopole;
+
+            vector_type node_extent;
+            node_extent.xyz = fmax(left_child_monopole.xyz + 0.5f * left_child_node_extent.xyz,
+                                   right_child_monopole.xyz + 0.5f * right_child_node_extent.xyz)
+                            - fmin(left_child_monopole.xyz - 0.5f * left_child_node_extent.xyz,
+                                   right_child_monopole.xyz - 0.5f * right_child_node_extent.xyz);
+
+            node_extent.w =  3.f/(4.f * M_PI) * cbrt(node_extent.x * node_extent.y * node_extent.z);
+            //node_extent.w = fmax(node_extent.x, fmax(node_extent.y, node_extent.z));
+            node_widths[effective_node_idx] = node_extent;
           }
         }
       }
