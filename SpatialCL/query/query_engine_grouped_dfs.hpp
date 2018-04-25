@@ -101,6 +101,8 @@ public:
       typename configuration<type_system>::particle_type;
   using vector_type =
       typename configuration<type_system>::vector_type;
+  using node_type0 = typename Tree_type::node_type0;
+  using node_type1 = typename Tree_type::node_type1;
 
   static_assert(group_size > 0, "group size must be > 0");
   static_assert(node_batch_load_size > 0, "node_batch_load_size must be > 0");
@@ -169,8 +171,8 @@ public:
 private:
   cl_int run(const qcl::device_context_ptr& ctx,
              const cl::Buffer& particles,
-             const cl::Buffer& bbox_min_corner,
-             const cl::Buffer& bbox_max_corner,
+             const cl::Buffer& node_values0,
+             const cl::Buffer& node_values1,
              std::size_t num_particles,
              std::size_t effective_num_particles,
              std::size_t effective_num_levels,
@@ -184,8 +186,8 @@ private:
 
 
     call.partial_argument_list(particles,
-                               bbox_min_corner,
-                               bbox_max_corner,
+                               node_values0,
+                               node_values1,
                                static_cast<cl_ulong>(num_particles),
                                static_cast<cl_ulong>(effective_num_particles),
                                static_cast<cl_ulong>(effective_num_levels));
@@ -200,21 +202,38 @@ private:
   static constexpr T static_max(T a, T b)
   { return (a > b) ? a : b; }
 
+  static constexpr std::size_t particle_type_size = sizeof(particle_type);
+  static constexpr std::size_t node_type0_size = sizeof(node_type0);
+  static constexpr std::size_t node_type1_size = sizeof(node_type1);
+
+  static constexpr std::size_t cache_data_unit =
+          static_max(particle_type_size,
+                     static_max(node_type0_size,
+                                node_type1_size));
+
   static constexpr std::size_t num_subgroups = group_size / subgroup_size;
-  // Number of particle_type elements in the cache
+  // Number of particle and node elements in the cache for each subgroup.
+  // The +cache_data_unit-1 term rounds up the integer division to ensure
+  // that there is always enough space allocated.
+  static constexpr std::size_t required_particle_cache_size =
+          (particle_batch_load_size * particle_type_size+cache_data_unit-1) / cache_data_unit;
+
+  static constexpr std::size_t required_node_type0_cache_size =
+          (node_batch_load_size * node_type0_size + cache_data_unit-1) / cache_data_unit;
+  static constexpr std::size_t required_node_type1_cache_size =
+          (node_batch_load_size * node_type1_size + cache_data_unit-1) / cache_data_unit;
+
+  static constexpr std::size_t required_node_cache_size =
+          required_node_type0_cache_size + required_node_type1_cache_size;
+
   static constexpr std::size_t subgroup_cache_size =
-            // We need the maximum of the space needed at particle or node level.
-            // The +sizeof(particle_type)-1 rounds up the integer division to ensure
-            // that there is always enough space allocated.
-            (static_max(particle_batch_load_size * sizeof(particle_type),
-                        node_batch_load_size * 2 * sizeof(vector_type))+sizeof(particle_type)-1)
-            / sizeof(particle_type);
-  // The amount of cache memory in units of particles
+          static_max(required_node_cache_size, required_particle_cache_size);
+  // The amount of cache memory in units of cache_data_size
   static constexpr std::size_t total_cache_size = subgroup_cache_size * num_subgroups;
 
   QCL_ENTRYPOINT(query)
   QCL_MAKE_SOURCE(
-    QCL_INCLUDE_MODULE(configuration<type_system>)
+    QCL_INCLUDE_MODULE(tree_configuration<Tree_type>)
     QCL_INCLUDE_MODULE(Handler_module)
     QCL_INCLUDE_MODULE(binary_tree)
     QCL_IMPORT_CONSTANT(group_size)
@@ -226,6 +245,10 @@ private:
     QCL_IMPORT_CONSTANT(num_subgroups)
     QCL_IMPORT_CONSTANT(total_cache_size)
     QCL_IMPORT_CONSTANT(subgroup_cache_size)
+    QCL_IMPORT_CONSTANT(particle_type_size)
+    QCL_IMPORT_CONSTANT(node_type0_size)
+    QCL_IMPORT_CONSTANT(node_type1_size)
+    QCL_IMPORT_CONSTANT(required_node_type0_cache_size)
     R"(
       #if subgroup_size < group_size
         // If we use multiple subgroups, we don't need barriers because
@@ -239,6 +262,14 @@ private:
         // Without subgroups and group sizes larger
         // than a warp, we need full-fledged barriers
         #define fast_barrier(flags) barrier(flags)
+      #endif
+
+      #if particle_type_size >= node_type0_size && particle_type_size >= node_type1_size
+        #define cache_unit_type particle_type
+      #elif node_type0_size >= particle_type_size && node_type0_size >= node_type1_size
+        #define cache_unit_type node_type0
+      #else
+        #define cache_unit_type node_type1
       #endif
     )"
     QCL_RAW(
@@ -338,8 +369,8 @@ private:
       }
     )
     QCL_PREPROCESSOR(define,
-      QUERY_NODE_LEVEL(bbox_min_corner,
-                       bbox_max_corner,
+      QUERY_NODE_LEVEL(node_values0,
+                       node_values1,
                        effective_num_particles,
                        num_particles,
                        effective_num_levels,
@@ -350,10 +381,10 @@ private:
                        subgroup_cache)
       {
 
-        __local vector_type* const bbox_min_corner_cache =
-                       (__local vector_type*)subgroup_cache;
-        __local vector_type* const bbox_max_corner_cache =
-                       bbox_min_corner_cache + node_batch_load_size;
+        __local node_type0* const node_values0_cache =
+                       (__local node_type0*)subgroup_cache;
+        __local node_type1* const node_values1_cache =
+                       (__local node_type0*)(subgroup_cache + required_node_type0_cache_size);
 
 
         const ulong node_idx_begin = get_node_index(&group_start_node,
@@ -374,10 +405,10 @@ private:
         // Load nodes collectively into the cache
         if(subgroup_lid < num_available_nodes)
         {
-          bbox_min_corner_cache[subgroup_lid] =
-                             bbox_min_corner[node_idx_begin + subgroup_lid];
-          bbox_max_corner_cache[subgroup_lid] =
-                             bbox_max_corner[node_idx_begin + subgroup_lid];
+          node_values0_cache[subgroup_lid] =
+                             node_values0[node_idx_begin + subgroup_lid];
+          node_values1_cache[subgroup_lid] =
+                             node_values1[node_idx_begin + subgroup_lid];
         }
         subgroup_first_selected_nodes[subgroup_lid] = num_available_nodes;
         fast_barrier(CLK_LOCAL_MEM_FENCE);
@@ -386,7 +417,7 @@ private:
         // cache and check if nodes should be selected.
         if(tid < get_num_queries())
         {
-//$pragma{ unroll node_batch_load_size}
+
           for(int i = 0; i < num_available_nodes; ++i)
           {
             int node_selected = 0;
@@ -396,8 +427,8 @@ private:
             dfs_node_selector(&node_selected,
                               &current_node,
                               (node_idx_begin + i),
-                              bbox_min_corner_cache[i],
-                              bbox_max_corner_cache[i]);
+                              node_values0_cache[i],
+                              node_values1_cache[i]);
 
             // If the query has decided to select some nodes,
             // mark this work item as having selected nodes
@@ -425,8 +456,8 @@ private:
         if(tid < get_num_queries())
           for (int i = 0; i < first_node; ++i)
             dfs_unique_node_discard_event(node_idx_begin + i,
-                                          bbox_min_corner_cache[i],
-                                          bbox_max_corner_cache[i]);
+                                          node_values0_cache[i],
+                                          node_values1_cache[i]);
 
         // Advance the number of covered particles
         num_covered_particles +=
@@ -461,8 +492,8 @@ private:
     QCL_RAW(
     
       __kernel void query(__global particle_type* particles,
-                          __global vector_type* restrict bbox_min_corner,
-                          __global vector_type* restrict bbox_max_corner,
+                          __global vector_type* restrict node_values0,
+                          __global vector_type* restrict node_values1,
                           ulong num_particles,
                           ulong effective_num_particles,
                           ulong effective_num_levels,
@@ -470,17 +501,16 @@ private:
       {
         __local int node_selection_map [group_size];
         // This cache will be used both for particles and nodes.
-        // It is important to use particle_type as type, since
-        // sizeof(particle_type)>=sizeof(vector_type), hence
-        // using particle_type guarantees correct alignment.
-        __local particle_type cache [total_cache_size];
+        // It is important to use the largest of these
+        // data types as type, since this guarantees a correct alignment
+        __local cache_unit_type cache [total_cache_size];
 
         //__local float cache[subgroup_size * 8 * num_subgroups];
 
         const int subgroup_id = get_local_id(0) / subgroup_size;
         const int subgroup_lid = get_local_id(0) % subgroup_size;
 
-        volatile __local particle_type* const subgroup_cache =
+        volatile __local cache_unit_type* const subgroup_cache =
                   cache + subgroup_id * subgroup_cache_size;
         //volatile __local float* const subgroup_cache = cache + subgroup_id*subgroup_size*8;
         volatile __local int* const subgroup_node_selection_map =
@@ -511,8 +541,8 @@ private:
           }
           else
           {
-            QUERY_NODE_LEVEL(bbox_min_corner,
-                             bbox_max_corner,
+            QUERY_NODE_LEVEL(node_values0,
+                             node_values1,
                              effective_num_particles,
                              num_particles,
                              effective_num_levels,
