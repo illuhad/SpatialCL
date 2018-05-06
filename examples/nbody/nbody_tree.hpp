@@ -124,26 +124,10 @@ private:
 
   QCL_ENTRYPOINT(build_ll_monopoles)
   QCL_ENTRYPOINT(build_monopoles)
-  QCL_ENTRYPOINT(store_bbox_diameter)
   QCL_MAKE_SOURCE(
     QCL_INCLUDE_MODULE(spatialcl::configuration<nbody_type_descriptor<Scalar>>)
     QCL_INCLUDE_MODULE(spatialcl::binary_tree)
     QCL_RAW (
-      scalar get_node_diameter(vector_type center_of_mass,
-                               vector_type left_child_position,
-                               vector_type right_child_position,
-                               scalar left_child_diameter,
-                               scalar right_child_diameter)
-      {
-        vector_type d0 = left_child_position - center_of_mass;
-        vector_type d1 = right_child_position - center_of_mass;
-        scalar r0 = length(d0.xyz);
-        scalar r1 = length(d1.xyz);
-
-        return 2.0f * fmax(r0,r1) + 0.5f * (left_child_diameter + right_child_diameter);
-      }
-
-
       // Build monopoles on lowest level
       __kernel void build_ll_monopoles(__global vector_type* monopoles,
                                        __global vector_type* node_widths,
@@ -162,7 +146,9 @@ private:
           ulong right_particle_idx = left_particle_idx + 1;
 
           particle_type left_particle = particles[left_particle_idx];
-          particle_type right_particle = particles[right_particle_idx];
+          particle_type right_particle = left_particle;
+          if(right_particle < num_particles)
+            right_particle = particles[right_particle_idx];
 
           vector_type monopole;
           monopole.xyz = left_particle.s3 * left_particle.s012;
@@ -178,7 +164,7 @@ private:
           node_extent.w = 0.33f * (node_extent.x + node_extent.y + node_extent.z);
 
           node_widths[tid] = node_extent;
-          monopoles[tid] = monopole;
+          monopoles  [tid] = monopole;
 
         }
       }
@@ -247,8 +233,8 @@ private:
                             - fmin(left_child_monopole.xyz - 0.5f * left_child_node_extent.xyz,
                                    right_child_monopole.xyz - 0.5f * right_child_node_extent.xyz);
 
-            node_extent.w =  3.f/(4.f * M_PI) * cbrt(node_extent.x * node_extent.y * node_extent.z);
-            //node_extent.w = fmax(node_extent.x, fmax(node_extent.y, node_extent.z));
+            //node_extent.w =  3.f/(4.f * M_PI) * cbrt(node_extent.x * node_extent.y * node_extent.z);
+            node_extent.w = fmax(node_extent.x, fmax(node_extent.y, node_extent.z));
             node_widths[effective_node_idx] = node_extent;
           }
         }
