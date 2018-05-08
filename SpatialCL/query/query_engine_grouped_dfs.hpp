@@ -307,8 +307,11 @@ private:
                            num_covered_particles,
                            subgroup_lid,
                            subgroup_selection_map,
-                           subgroup_particle_cache)
+                           subgroup_cache)
       {
+        volatile __local particle_type* subgroup_particle_cache =
+                         (__local particle_type*)subgroup_cache;
+
         ulong particle_idx_begin = group_start_node.local_node_id;
         const int num_available_particles = min((int)particle_batch_load_size, 
                                                 (int)(num_particles-num_covered_particles));
@@ -384,7 +387,7 @@ private:
         __local node_type0* const node_values0_cache =
                        (__local node_type0*)subgroup_cache;
         __local node_type1* const node_values1_cache =
-                       (__local node_type0*)(subgroup_cache + required_node_type0_cache_size);
+                       (__local node_type1*)(subgroup_cache + required_node_type0_cache_size);
 
 
         const ulong node_idx_begin = get_node_index(&group_start_node,
@@ -492,8 +495,8 @@ private:
     QCL_RAW(
     
       __kernel void query(__global particle_type* particles,
-                          __global vector_type* restrict node_values0,
-                          __global vector_type* restrict node_values1,
+                          __global node_type0* restrict node_values0,
+                          __global node_type1* restrict node_values1,
                           ulong num_particles,
                           ulong effective_num_particles,
                           ulong effective_num_levels,
