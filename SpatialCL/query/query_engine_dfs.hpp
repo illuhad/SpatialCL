@@ -140,7 +140,7 @@ private:
 
         binary_tree_key_t find_first_left_parent(binary_tree_key_t* node)
         {
-          binary_tree_key_t result = *node;
+          binary_tree_key_t result = binary_tree_get_parent(node);
           while(binary_tree_is_right_child(&result))
             result = binary_tree_get_parent(&result);
           return result;
@@ -268,8 +268,8 @@ private:
             current_node.level = 0;
             current_node.local_node_id = 0;
 
-            for(ulong num_covered_particles = 0;
-                num_covered_particles < num_particles;)
+            ulong num_covered_particles = 0;
+            while(num_covered_particles < num_particles)
             {
               int particle_level_reached = (current_node.level == effective_num_levels-1);
 
