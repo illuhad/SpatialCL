@@ -106,6 +106,7 @@ private:
     QCL_INCLUDE_MODULE(Handler_module)
     QCL_INCLUDE_MODULE(binary_tree)
     QCL_IMPORT_CONSTANT(Iteration_strategy)
+    QCL_IMPORT_CONSTANT(group_size)
     QCL_RAW(
         ulong load_node(binary_tree_key_t* node,
                        __global node_type0* node_values0,
@@ -257,6 +258,7 @@ private:
                             ulong effective_num_particles,
                             ulong effective_num_levels,
                             declare_full_query_parameter_set())
+          __attribute__((reqd_work_group_size(group_size,1,1)))
         {
           for(size_t tid = get_global_id(0);
               tid < get_num_queries();
