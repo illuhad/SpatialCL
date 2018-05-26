@@ -46,6 +46,12 @@ enum depth_first_iteration_strategy
   HIERARCHICAL_ITERATION_RELAXED = 1
 };
 
+/// Depth-first query.
+/// \tparam Tree_type the tree type on which this query operates
+/// \tparam Handler_module A query handler, fulfilling the dfs handler concept
+/// \tparam group_size The OpenCL group size of the query. A 0 will correspond
+/// to a cl::NullRange and will hence allow the OpenCL implementation to choose
+/// the group size
 template<class Tree_type,
          class Handler_module,
          depth_first_iteration_strategy Iteration_strategy,
@@ -84,9 +90,14 @@ private:
              Handler_module& handler,
              cl::Event* evt = nullptr)
   {
+
+    cl::NDRange local_size = cl::NullRange;
+    if(group_size > 0)
+      local_size = cl::NDRange{group_size};
+
     qcl::kernel_call call = query(ctx,
                                   cl::NDRange{handler.get_num_independent_queries()},
-                                  cl::NDRange{group_size},
+                                  local_size,
                                   evt);
 
     call.partial_argument_list(particles,
@@ -156,6 +167,12 @@ private:
         #define NEXT_PARENT(node) binary_tree_get_parent(&node)
       #else
         #error Invalid iteration strategy
+      #endif
+
+      #if group_size > 0
+        #define KERNEL_ATTRIBUTES __attribute__((reqd_work_group_size(group_size,1,1)))
+      #else
+        #define KERNEL_ATTRIBUTES
       #endif
       )"
       QCL_PREPROCESSOR(define, get_query_id() tid)
@@ -258,7 +275,7 @@ private:
                             ulong effective_num_particles,
                             ulong effective_num_levels,
                             declare_full_query_parameter_set())
-          __attribute__((reqd_work_group_size(group_size,1,1)))
+          KERNEL_ATTRIBUTES
         {
           for(size_t tid = get_global_id(0);
               tid < get_num_queries();
