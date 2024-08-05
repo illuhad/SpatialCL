@@ -147,7 +147,7 @@ private:
 
           particle_type left_particle = particles[left_particle_idx];
           particle_type right_particle = left_particle;
-          if(right_particle < num_particles)
+          if(right_particle_idx < num_particles)
             right_particle = particles[right_particle_idx];
 
           vector_type monopole;
